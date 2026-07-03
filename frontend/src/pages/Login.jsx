@@ -1,40 +1,44 @@
-import React, { useState } from 'react';
-import { MessagesSquare, User, Lock } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { MessagesSquare } from 'lucide-react';
 import { useToast } from '../components/Toast';
-import { mockStore } from '../utils/mockStore';
+import { loginUrls } from '../utils/auth';
 
-export default function Login({ onLoginSuccess }) {
-  const [isRegister, setIsRegister] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+// GitHub mark (inline SVG so it needs no extra asset / icon export).
+function GithubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.31-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.87.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22 0 1.61-.01 2.9-.01 3.29 0 .32.22.7.83.58C20.56 22.29 24 17.8 24 12.5 24 5.87 18.63.5 12 .5z" />
+    </svg>
+  );
+}
+
+// Google "G" mark (inline SVG so it needs no extra asset).
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  );
+}
+
+export default function Login() {
   const { addToast } = useToast();
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setError('');
-
-    const cleanUsername = username.trim().toLowerCase();
-    if (!cleanUsername) {
-      setError('Username is required.');
-      return;
+  // If the OAuth flow failed, the backend sends us back with ?error=auth_failed.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('error') === 'auth_failed') {
+      addToast('Sign in failed. Please try again.', 'error');
+      window.history.replaceState({}, document.title, '/');
     }
+  }, [addToast]);
 
-    if (isRegister) {
-      const userExists = mockStore.users.some(u => u.username === cleanUsername);
-      if (userExists) {
-        setError('Username already taken.');
-        return;
-      }
-    }
-
-    const result = mockStore.login(cleanUsername);
-    if (result.success) {
-      addToast(isRegister ? 'Account created successfully!' : 'Logged in successfully!', 'success');
-      onLoginSuccess();
-    } else {
-      setError(result.error || 'Failed to authenticate.');
-    }
+  // Full-page redirect to the backend, which kicks off the provider login.
+  const signInWith = (url) => {
+    window.location.href = url;
   };
 
   return (
@@ -44,56 +48,32 @@ export default function Login({ onLoginSuccess }) {
           <div className="login-logo-icon-wrapper">
             <MessagesSquare className="login-logo-icon" size={40} />
           </div>
-          <h1 className="login-logo-title">ChatRoom</h1>
+          <h1 className="login-logo-title">Zentro</h1>
           <p className="login-logo-subtitle">Talk in real time</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="input-group">
-            <span className="input-icon">
-              <User size={18} />
-            </span>
-            <input
-              type="text"
-              placeholder="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="login-input focus-ring"
-              autoFocus
-            />
-          </div>
-
-          <div className="input-group">
-            <span className="input-icon">
-              <Lock size={18} />
-            </span>
-            <input
-              type="password"
-              placeholder="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="login-input focus-ring"
-            />
-          </div>
-
-          {error && <div className="login-error-text">{error}</div>}
-
-          <button type="submit" className="login-btn focus-ring">
-            {isRegister ? 'Create Account' : 'Log In'}
-          </button>
-        </form>
-
-        <div className="login-toggle-container">
+        <div className="login-form">
           <button
-            className="login-toggle-btn"
-            onClick={() => {
-              setIsRegister(!isRegister);
-              setError('');
-            }}
+            className="social-btn google-btn focus-ring"
+            onClick={() => signInWith(loginUrls.google)}
           >
-            {isRegister ? 'Already have an account? Log In' : 'New here? Create account'}
+            <GoogleIcon />
+            <span>Continue with Google</span>
+          </button>
+
+          <button
+            className="social-btn github-btn focus-ring"
+            onClick={() => signInWith(loginUrls.github)}
+          >
+            <GithubIcon />
+            <span>Continue with GitHub</span>
           </button>
         </div>
+
+        <p className="login-terms">
+          By continuing you agree to chat responsibly. We only use your name and
+          profile picture from the provider.
+        </p>
       </div>
 
       <style>{`
@@ -156,85 +136,53 @@ export default function Login({ onLoginSuccess }) {
         .login-form {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+          gap: 14px;
         }
 
-        .input-group {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .input-icon {
-          position: absolute;
-          left: 14px;
-          color: var(--color-text-muted);
+        .social-btn {
           display: flex;
           align-items: center;
           justify-content: center;
-          pointer-events: none;
-        }
-
-        .login-input {
+          gap: 12px;
           width: 100%;
-          background-color: var(--color-surface-2);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-input);
-          padding: 14px 14px 14px 42px;
-          font-size: 14px;
-          color: var(--color-text-primary);
-          transition: border-color var(--transition-fast);
-          outline: none;
-        }
-
-        .login-input::placeholder {
-          color: var(--color-text-muted);
-        }
-
-        .login-input:focus {
-          border-color: var(--color-primary);
-        }
-
-        .login-error-text {
-          color: var(--color-danger);
-          font-size: 13px;
-          font-weight: 500;
-          margin-top: -4px;
-          text-align: left;
-        }
-
-        .login-btn {
-          background-color: var(--color-primary);
-          border: none;
-          color: var(--color-text-primary);
-          padding: 14px;
+          padding: 13px;
           border-radius: var(--radius-input);
           font-weight: 600;
           font-size: 15px;
           cursor: pointer;
+          border: 1px solid var(--color-border);
           transition: background-color var(--transition-fast), transform var(--transition-fast);
-          margin-top: 8px;
         }
 
-        .login-btn:hover {
-          background-color: var(--color-primary-hover);
+        .social-btn:active {
+          transform: scale(0.99);
         }
 
-        .login-toggle-container {
-          text-align: center;
+        .google-btn {
+          background-color: #ffffff;
+          color: #1f1f1f;
         }
 
-        .login-toggle-btn {
-          background: none;
-          border: none;
+        .google-btn:hover {
+          background-color: #f2f2f2;
+        }
+
+        .github-btn {
+          background-color: #24292e;
+          color: #ffffff;
+          border-color: #24292e;
+        }
+
+        .github-btn:hover {
+          background-color: #2f363d;
+        }
+
+        .login-terms {
+          font-size: 12px;
           color: var(--color-text-muted);
-          font-size: 13px;
-          cursor: pointer;
-          transition: color var(--transition-fast);
-        }
-
-        .login-toggle-btn:hover {
-          color: var(--color-text-primary);
+          text-align: center;
+          line-height: 1.5;
+          margin-top: -6px;
         }
       `}</style>
     </div>

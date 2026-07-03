@@ -15,10 +15,17 @@ router.get("/search", requireAuth, async (req, res) => {
     username: { $regex: q, $options: "i" },
     _id: { $ne: req.user.id },
   })
-    .select("username")
+    .select("username name avatarUrl")
     .limit(10);
 
-  return res.json({ users: users.map((u) => ({ id: u._id, username: u.username })) });
+  return res.json({
+    users: users.map((u) => ({
+      id: u._id,
+      username: u.username,
+      name: u.name || u.username,
+      avatarUrl: u.avatarUrl || "",
+    })),
+  });
 });
 
 export default router;

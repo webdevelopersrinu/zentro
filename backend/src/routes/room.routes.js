@@ -48,6 +48,35 @@ router.post("/:id/invite", requireAuth, async (req, res) => {
   return res.json({ room });
 });
 
+// PATCH /api/rooms/:id  { name }
+// Creator-only. Rename the room.
+router.patch("/:id", requireAuth, async (req, res) => {
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+  if (room.creator.toString() !== req.user.id)
+    return res.status(403).json({ error: "Only the creator can update" });
+
+  const name = (req.body.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Room name required" });
+
+  room.name = name;
+  await room.save();
+  return res.json({ room });
+});
+
+// DELETE /api/rooms/:id
+// Creator-only. Delete the room AND all its messages.
+router.delete("/:id", requireAuth, async (req, res) => {
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+  if (room.creator.toString() !== req.user.id)
+    return res.status(403).json({ error: "Only the creator can delete" });
+
+  await Message.deleteMany({ room: room._id });
+  await room.deleteOne();
+  return res.json({ ok: true, deletedRoomId: room._id });
+});
+
 // GET /api/rooms/:id/messages  -> message history for a room (members only)
 router.get("/:id/messages", requireAuth, async (req, res) => {
   const room = await Room.findById(req.params.id);
