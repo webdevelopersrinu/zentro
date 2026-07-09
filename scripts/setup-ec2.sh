@@ -6,15 +6,17 @@
 # then create an AMI and launch the 2nd instance from that image.
 #
 # USAGE:
-#   1) Edit REPO_URL below (or pass it: REPO_URL=... ./setup-ec2.sh)
-#   2) scp/create your secrets first is NOT needed — the script pauses and tells
-#      you where to put backend/.env and frontend/.env, then re-run.
+#   bash scripts/setup-ec2.sh
+#
+# It pauses once to have you create backend/.env (secrets), then re-run it.
+# Override the defaults with env vars if you fork the repo or change the domain:
+#   REPO_URL=... DOMAIN=... bash scripts/setup-ec2.sh
 #
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/<you>/<zentro-repo>.git}"
-APP_DIR="/var/www/zentro"
-DOMAIN="zentro.srinudesetti.in"
+REPO_URL="${REPO_URL:-https://github.com/webdevelopersrinu/zentro.git}"
+APP_DIR="${APP_DIR:-/var/www/zentro}"
+DOMAIN="${DOMAIN:-zentro.srinudesetti.in}"
 
 echo "▸ 1/6 System packages (Nginx, Git, Node 20, pm2)"
 sudo apt-get update -y
