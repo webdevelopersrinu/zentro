@@ -44,9 +44,10 @@ if [ ! -f "$APP_DIR/backend/.env" ]; then
    nano $APP_DIR/backend/.env
    # NODE_ENV=production
    # PORT=4000
-   # MONGO_URI=mongodb+srv://...
+   # MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/chatapp
    # VALKEY_URL=redis://<elasticache-endpoint>:6379
-   # JWT_SECRET=...  SESSION_SECRET=...
+   # JWT_SECRET=<openssl rand -hex 32>
+   # SESSION_SECRET=<openssl rand -hex 32>
    # SERVER_URL=https://$DOMAIN
    # CLIENT_URL=https://$DOMAIN
    # CLIENT_ORIGIN=https://$DOMAIN
@@ -63,7 +64,8 @@ echo "VITE_API_URL=/api" > "$APP_DIR/frontend/.env"   # same-domain API path
 echo "▸ 4/6 Install backend deps + start with pm2"
 ( cd "$APP_DIR/backend" && npm install --omit=dev )
 pm2 delete zentro-api >/dev/null 2>&1 || true
-pm2 start "$APP_DIR/backend/src/server.js" --name zentro-api
+# --cwd matters: dotenv resolves .env relative to the working directory.
+pm2 start "$APP_DIR/backend/src/server.js" --name zentro-api --cwd "$APP_DIR/backend"
 pm2 save
 # Make pm2 resurrect the process on every boot (crucial: the AMI clone inherits this)
 sudo env PATH="$PATH:/usr/bin" pm2 startup systemd -u "$USER" --hp "$HOME" | tail -1 | bash || true

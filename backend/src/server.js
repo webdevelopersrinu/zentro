@@ -1,4 +1,12 @@
-import "dotenv/config";
+import { fileURLToPath } from "url";
+import path from "path";
+import dotenv from "dotenv";
+// Load backend/.env by absolute path — pm2/systemd may start this process from
+// any working directory, and dotenv's default is cwd-relative.
+dotenv.config({
+  path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.env"),
+});
+
 import http from "http";
 import express from "express";
 import cors from "cors";
