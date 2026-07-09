@@ -55,7 +55,11 @@ async function start() {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  app.get("/health", (_req, res) => res.json({ ok: true, pid: process.pid }));
+  // Health check. Exposed at both paths: "/health" for a direct hit on :4000,
+  // and "/api/health" because Nginx/ALB forward the "/api" prefix unchanged.
+  const health = (_req, res) => res.json({ ok: true, pid: process.pid });
+  app.get("/health", health);
+  app.get("/api/health", health);
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/rooms", roomRoutes);
