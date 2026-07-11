@@ -91,9 +91,13 @@
 
   --text: #edeef4;
   --text-muted: #8b90a6;
-  --text-faint: #5d6379;
+  /* Faint is not decoration: it is every timestamp, tick, day divider and the
+     "edited" marker. It has to clear 4.5:1 on --bg, not merely look quiet. */
+  --text-faint: #8288a0;
 
-  --bubble-me: linear-gradient(180deg, #6378ff 0%, #5468f0 100%);
+  /* The logo indigo is too light to carry white text. Start the gradient a step
+     down the scale so a message you SENT is as readable as one you received. */
+  --bubble-me: linear-gradient(180deg, var(--indigo-600) 0%, var(--indigo-700) 100%);
   --bubble-me-text: #ffffff;
   --bubble-them: #1b1f2e;
   --bubble-them-text: #e6e8f0;
@@ -130,9 +134,9 @@
 
   --text: #141722;
   --text-muted: #6b7185;
-  --text-faint: #9aa0b4;
+  --text-faint: #6b7185; /* see the dark theme note — AA beats a shade of hierarchy */
 
-  --bubble-me: linear-gradient(180deg, #6378ff 0%, #5468f0 100%);
+  --bubble-me: linear-gradient(180deg, var(--indigo-600) 0%, var(--indigo-700) 100%);
   --bubble-me-text: #ffffff;
   --bubble-them: #eef0f7;
   --bubble-them-text: #23283a;

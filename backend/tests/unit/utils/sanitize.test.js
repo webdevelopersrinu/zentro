@@ -1,4 +1,6 @@
-import { stripHtml, stripMongoOperators } from "../../../src/utils/sanitize.js";
+import { stripHtml, escapeRegex, stripMongoOperators } from "../../../src/utils/sanitize.js";
+
+const NBSP = String.fromCharCode(0xa0); // U+00A0, invisible in source
 
 describe("stripHtml", () => {
   it.each([
@@ -13,10 +15,19 @@ describe("stripHtml", () => {
 
   it("removes the script CONTENTS, not just the tags", () => {
     expect(stripHtml("<script>alert(1)</script>")).toBe("");
+    expect(stripHtml("<SCRIPT>alert(1)</SCRIPT>")).toBe("");
   });
 
   it("leaves the text of non-script tags", () => {
     expect(stripHtml("<div>keep <b>this</b></div>")).toBe("keep this");
+  });
+
+  it("removes comments", () => {
+    expect(stripHtml("<!-- sneaky -->hi")).toBe("hi");
+  });
+
+  it("does not let a nested tag reassemble once the inner one is removed", () => {
+    expect(stripHtml("<scr<b>ipt>x</script>")).not.toContain("<");
   });
 
   it("coerces null and undefined to an empty string", () => {
@@ -24,9 +35,43 @@ describe("stripHtml", () => {
     expect(stripHtml(undefined)).toBe("");
   });
 
-  it("does not mangle legitimate punctuation or emoji", () => {
-    expect(stripHtml("2 < 3 && 5 > 4 🚀")).toContain("🚀");
-    expect(stripHtml("hello, world!")).toBe("hello, world!");
+  // The old implementation entity-encoded the text it kept — users literally saw
+  // "Tom &amp; Jerry" — and its HTML parser swallowed everything after a bare "<",
+  // so "if a<b then" was stored as "if a".
+  describe("does not mangle ordinary prose", () => {
+    it.each([
+      ["Tom & Jerry", "Tom & Jerry"],
+      ["5 > 3 and 2 < 4", "5 > 3 and 2 < 4"],
+      ["if a<b then", "if a<b then"],
+      ["2 < 3 && 5 > 4 🚀", "2 < 3 && 5 > 4 🚀"],
+      ['she said "hi"', 'she said "hi"'],
+      ["it's fine", "it's fine"],
+      ["hello, world!", "hello, world!"],
+    ])("%s -> %s", (input, expected) => {
+      expect(stripHtml(input)).toBe(expected);
+    });
+
+    it("is idempotent, so a second edit cannot compound &amp;amp;", () => {
+      const once = stripHtml("Tom & Jerry <b>and</b> 5 > 3");
+
+      expect(once).toBe("Tom & Jerry and 5 > 3");
+      expect(stripHtml(once)).toBe(once);
+    });
+  });
+
+  it("treats a body of Unicode whitespace as empty, not as a blank bubble", () => {
+    expect(stripHtml(NBSP)).toBe("");
+    expect(stripHtml(` ${NBSP} \n`)).toBe("");
+    expect(stripHtml(`${NBSP}hi${NBSP}`)).toBe("hi");
+  });
+});
+
+describe("escapeRegex", () => {
+  it("makes a catastrophic-backtracking pattern match only itself", () => {
+    const pattern = new RegExp(`^${escapeRegex("(a+)+$")}`);
+
+    expect(pattern.test("(a+)+$ is a bad idea")).toBe(true);
+    expect(pattern.test("aaaaaaaaaaaaaaaaaaaaaaaaaaaa")).toBe(false);
   });
 });
 

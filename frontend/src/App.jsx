@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect } from "react";
 
 import { useAuth } from "./context/AuthContext.jsx";
 import { SocketProvider } from "./context/SocketContext.jsx";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary.jsx";
 import Login from "./pages/Login.jsx";
 import AuthCallback from "./pages/AuthCallback.jsx";
 
@@ -30,7 +31,9 @@ export default function App() {
   return (
     <SocketProvider>
       <Suspense fallback={<AuthCallback message="Loading your rooms…" />}>
-        <Chat />
+        <ErrorBoundary>
+          <Chat />
+        </ErrorBoundary>
       </Suspense>
     </SocketProvider>
   );

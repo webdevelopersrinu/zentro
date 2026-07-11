@@ -68,7 +68,7 @@ describe("MessageList — wiring the bubbles", () => {
     const { onReact } = setup();
 
     await userEvent.click(screen.getByRole("button", { name: "Add reaction" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: /React with 👍/ }));
+    await userEvent.click(screen.getByRole("button", { name: /React with 👍/ }));
 
     expect(onReact).toHaveBeenCalledWith("m1", "👍");
   });

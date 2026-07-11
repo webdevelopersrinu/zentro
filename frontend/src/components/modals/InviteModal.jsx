@@ -9,6 +9,7 @@ import { Avatar } from "../ui/Avatar.jsx";
 import { Spinner } from "../ui/Spinner.jsx";
 import { useDebounce } from "../../hooks/useDebounce.js";
 import { useInviteUser } from "../../hooks/useMembers.js";
+import { useToast } from "../../context/ToastContext.jsx";
 import { searchUsers } from "../../services/user.service.js";
 import { queryKeys } from "../../lib/queryKeys.js";
 import { SEARCH_DEBOUNCE_MS } from "../../config/index.js";
@@ -25,7 +26,8 @@ export function InviteModal({ open, onClose, room }) {
   const [query, setQuery] = useState("");
   const [invited, setInvited] = useState(new Set());
   const debounced = useDebounce(query.trim(), SEARCH_DEBOUNCE_MS);
-  const invite = useInviteUser(room.id);
+  const invite = useInviteUser(room.id); // reports its own failures as an error toast
+  const { toast } = useToast();
 
   const enabled = open && debounced.length >= MIN_QUERY;
   const { data: users = [], isFetching } = useQuery({
@@ -42,7 +44,10 @@ export function InviteModal({ open, onClose, room }) {
 
   const handleInvite = (username) =>
     invite.mutate(username, {
-      onSuccess: () => setInvited((current) => new Set(current).add(username)),
+      onSuccess: () => {
+        setInvited((current) => new Set(current).add(username));
+        toast(`Invited @${username}`, { variant: "success" });
+      },
     });
 
   return (

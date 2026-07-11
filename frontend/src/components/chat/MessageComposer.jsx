@@ -20,6 +20,7 @@ export function MessageComposer({
   onSend,
   onKeystroke = noop,
   onStopTyping = noop,
+  restoreOnFailure = false,
 }) {
   const [draft, setDraft] = useState("");
   const textareaRef = useRef(null);
@@ -30,14 +31,25 @@ export function MessageComposer({
     node.style.height = `${Math.min(node.scrollHeight, max)}px`;
   };
 
-  const submit = () => {
+  /**
+   * The draft is cleared optimistically — a chat box that lags behind the keys
+   * feels broken. It comes BACK only for a caller whose send is not optimistic
+   * (`restoreOnFailure`): a refused thread reply leaves no bubble, so without
+   * this the user's words simply vanish. Where a failed bubble does appear it
+   * carries its own Retry, and handing the text back as well would offer two
+   * ways to send one message.
+   */
+  const submit = async () => {
     const text = draft.trim();
     if (!text || disabled) return;
 
-    onSend(text);
     setDraft("");
     onStopTyping();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
+
+    const ack = await onSend(text);
+    if (restoreOnFailure && !ack?.ok) setDraft(text);
+    return ack;
   };
 
   const handleKeyDown = (event) => {

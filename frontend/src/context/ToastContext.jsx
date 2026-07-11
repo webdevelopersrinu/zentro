@@ -20,7 +20,13 @@ export function ToastProvider({ children }) {
     (message, { variant = "info", duration = AUTO_DISMISS_MS } = {}) => {
       const id = (nextId += 1);
       setToasts((current) => [...current, { id, message, variant }]);
-      if (duration) setTimeout(() => dismiss(id), duration);
+
+      /**
+       * An error toast is, for most flows in this app, the ONLY report that
+       * something failed. Four seconds is not enough to read one, so errors
+       * stay until they are dismissed. Success and info still expire.
+       */
+      if (duration && variant !== "error") setTimeout(() => dismiss(id), duration);
       return id;
     },
     [dismiss]
@@ -39,7 +45,13 @@ export function ToastProvider({ children }) {
         aria-label="Notifications"
       >
         {toasts.map(({ id, message, variant }) => (
-          <div key={id} className={cx(styles.toast, styles[variant])}>
+          <div
+            key={id}
+            className={cx(styles.toast, styles[variant])}
+            /* An error interrupts: it must not queue behind whatever is being read. */
+            role={variant === "error" ? "alert" : undefined}
+            aria-live={variant === "error" ? "assertive" : undefined}
+          >
             <span className={styles.message}>{message}</span>
             <button className={styles.close} onClick={() => dismiss(id)} aria-label="Dismiss">
               <X size={15} />

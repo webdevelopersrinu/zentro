@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { MessageReactions } from "../../../src/components/chat/MessageReactions.jsx";
@@ -88,23 +88,23 @@ describe("ReactionPicker", () => {
   it("stays closed until asked", () => {
     render(<ReactionPicker onPick={vi.fn()} />);
 
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Pick a reaction" })).not.toBeInTheDocument();
   });
 
   it("opens on the quick row, plus a way to the full set", async () => {
     await openPicker();
 
-    expect(screen.getAllByRole("menuitem")).toHaveLength(REACTION_EMOJIS.length + 1);
-    expect(screen.getByRole("menuitem", { name: "More emoji" })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Pick a reaction" })).getAllByRole("button")).toHaveLength(REACTION_EMOJIS.length + 1);
+    expect(screen.getByRole("button", { name: "More emoji" })).toBeInTheDocument();
   });
 
   it("picks an emoji and closes", async () => {
     const onPick = await openPicker();
 
-    await userEvent.click(screen.getByRole("menuitem", { name: `React with ${HEART}` }));
+    await userEvent.click(screen.getByRole("button", { name: `React with ${HEART}` }));
 
     expect(onPick).toHaveBeenCalledWith(HEART);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Pick a reaction" })).not.toBeInTheDocument();
   });
 
   it("closes on Escape without picking", async () => {
@@ -112,7 +112,7 @@ describe("ReactionPicker", () => {
 
     await userEvent.keyboard("{Escape}");
 
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Pick a reaction" })).not.toBeInTheDocument();
     expect(onPick).not.toHaveBeenCalled();
   });
 
@@ -121,14 +121,14 @@ describe("ReactionPicker", () => {
 
     await userEvent.click(document.body);
 
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Pick a reaction" })).not.toBeInTheDocument();
     expect(onPick).not.toHaveBeenCalled();
   });
 
   describe("the full set", () => {
     const openFull = async () => {
       const onPick = await openPicker();
-      await userEvent.click(screen.getByRole("menuitem", { name: "More emoji" }));
+      await userEvent.click(screen.getByRole("button", { name: "More emoji" }));
       return onPick;
     };
 
@@ -174,7 +174,58 @@ describe("ReactionPicker", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Add reaction" }));
 
-      expect(screen.getByRole("menu")).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "Pick a reaction" })).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The picker unmounts on close. With nothing restoring focus it lands on
+   * <body>, dropping a keyboard user back at the top of the page mid-conversation.
+   */
+  describe("keyboard focus", () => {
+    const trigger = () => screen.getByRole("button", { name: "Add reaction" });
+
+    it("returns focus to the trigger after picking an emoji", async () => {
+      await openPicker();
+
+      await userEvent.click(screen.getByRole("button", { name: `React with ${HEART}` }));
+
+      expect(trigger()).toHaveFocus();
+    });
+
+    it("returns focus to the trigger on Escape", async () => {
+      await openPicker();
+
+      await userEvent.keyboard("{Escape}");
+
+      expect(trigger()).toHaveFocus();
+    });
+
+    it("returns focus to the trigger on Escape out of the full sheet", async () => {
+      await openPicker();
+      await userEvent.click(screen.getByRole("button", { name: "More emoji" }));
+
+      await userEvent.keyboard("{Escape}");
+
+      expect(trigger()).toHaveFocus();
+    });
+
+    it("does NOT steal focus back when dismissed by clicking elsewhere", async () => {
+      await openPicker();
+      const elsewhere = document.createElement("button");
+      document.body.append(elsewhere);
+
+      await userEvent.click(elsewhere);
+
+      // The user chose where to go; yanking focus back would fight them.
+      expect(trigger()).not.toHaveFocus();
+      elsewhere.remove();
+    });
+
+    it("does not grab focus on first render", () => {
+      render(<ReactionPicker onPick={vi.fn()} />);
+
+      expect(trigger()).not.toHaveFocus();
     });
   });
 });

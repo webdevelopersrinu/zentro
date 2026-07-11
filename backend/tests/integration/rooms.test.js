@@ -1,6 +1,14 @@
 import { connectTestDB, resetTestDB, disconnectTestDB } from "../helpers/setup.js";
 import { createUser, createRoom, anonymous } from "../helpers/factories.js";
-import { ROOM_VISIBILITY } from "../../src/constants/index.js";
+import {
+  startSocketServer,
+  stopSocketServer,
+  connectClient,
+  expectNoEvent,
+  emitAck,
+} from "../helpers/socketServer.js";
+import { ROOM_VISIBILITY, SOCKET_EVENTS } from "../../src/constants/index.js";
+import { Room } from "../../src/models/Room.js";
 
 const PUBLIC = { name: "town-square", visibility: ROOM_VISIBILITY.PUBLIC };
 const PRIVATE = { name: "war-room", visibility: ROOM_VISIBILITY.PRIVATE };
@@ -347,6 +355,109 @@ describe("Rooms API", () => {
       await expect(
         owner.client.delete(`/api/rooms/${room.id}`)
       ).resolves.toMatchObject({ status: 404 });
+    });
+  });
+
+  // Two tabs, or two admins clicking at the same time. Every one of these used
+  // to leave a duplicate member (→ inflated memberCount → read receipts in that
+  // room never turn blue again) or a phantom pending request.
+  describe("Concurrent membership mutations", () => {
+    const memberIds = async (id) =>
+      (await Room.findById(id)).members.map(String);
+
+    it("admits a user exactly once when two joins race", async () => {
+      const room = await createRoom(owner.client, PUBLIC);
+      const join = () => outsider.client.post(`/api/rooms/${room.id}/join`);
+
+      await Promise.all([join(), join()]);
+
+      const ids = await memberIds(room.id);
+      expect(ids.filter((m) => m === outsider.user.id)).toHaveLength(1);
+      expect(ids).toHaveLength(2);
+    });
+
+    it("admits a user exactly once when two approvals of the same request race", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+      await outsider.client.post(`/api/rooms/${room.id}/join`);
+
+      const approve = () =>
+        owner.client.post(
+          `/api/rooms/${room.id}/requests/${outsider.user.id}/approve`
+        );
+      await Promise.all([approve(), approve()]);
+
+      const ids = await memberIds(room.id);
+      expect(ids.filter((m) => m === outsider.user.id)).toHaveLength(1);
+    });
+
+    it("clears both requests when two admins approve two different ones at once", async () => {
+      const second = await createUser({ username: "second-admin" });
+      const other = await createUser({ username: "other" });
+
+      const room = await createRoom(owner.client, PRIVATE);
+      await owner.client.post(`/api/rooms/${room.id}/invite`, {
+        username: second.user.username,
+      });
+      await second.client.post(`/api/rooms/${room.id}/join`); // accepts
+      await owner.client.post(`/api/rooms/${room.id}/admins/${second.user.id}`);
+
+      await outsider.client.post(`/api/rooms/${room.id}/join`);
+      await other.client.post(`/api/rooms/${room.id}/join`);
+
+      await Promise.all([
+        owner.client.post(
+          `/api/rooms/${room.id}/requests/${outsider.user.id}/approve`
+        ),
+        second.client.post(
+          `/api/rooms/${room.id}/requests/${other.user.id}/approve`
+        ),
+      ]);
+
+      const fresh = await Room.findById(room.id);
+      expect(fresh.joinRequests).toHaveLength(0);
+      expect(fresh.members.map(String)).toEqual(
+        expect.arrayContaining([outsider.user.id, other.user.id])
+      );
+    });
+  });
+
+  // Fan-out is io.to(roomId): membership is checked on WRITE, never on delivery.
+  // Leaving must therefore take the leaver's sockets out of the socket room too.
+  describe("Leaving cuts off the socket stream", () => {
+    let server;
+
+    beforeAll(async () => {
+      server = await startSocketServer();
+    });
+    afterAll(async () => {
+      await stopSocketServer(server);
+    });
+
+    it("stops delivering messages to a member who left", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+      await owner.client.post(`/api/rooms/${room.id}/invite`, {
+        username: outsider.user.username,
+      });
+      await outsider.client.post(`/api/rooms/${room.id}/join`);
+
+      const ownerSocket = await connectClient(server.url, owner.token);
+      const leaverSocket = await connectClient(server.url, outsider.token);
+
+      try {
+        await outsider.client.post(`/api/rooms/${room.id}/leave`);
+
+        const leaked = expectNoEvent(leaverSocket, SOCKET_EVENTS.MESSAGE_NEW);
+        const ack = await emitAck(ownerSocket, SOCKET_EVENTS.MESSAGE_SEND, {
+          roomId: room.id,
+          text: "members only",
+        });
+
+        expect(ack.ok).toBe(true);
+        await expect(leaked).resolves.toBe(false);
+      } finally {
+        ownerSocket.disconnect();
+        leaverSocket.disconnect();
+      }
     });
   });
 

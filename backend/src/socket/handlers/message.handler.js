@@ -26,7 +26,9 @@ export function registerMessageHandlers(io, socket) {
 
       // io (not socket) so the sender's other tabs get it too. The Valkey
       // adapter carries this to members connected to the other servers.
-      io.to(roomId).emit(SOCKET_EVENTS.MESSAGE_NEW, dto);
+      // dto.roomId, not the client's string: the room comes from the stored
+      // message, so the client never gets to name the room it broadcasts into.
+      io.to(dto.roomId).emit(SOCKET_EVENTS.MESSAGE_NEW, dto);
       return { message: dto };
     })
   );

@@ -37,7 +37,6 @@
     "passport": "^0.7.0",
     "passport-github2": "^0.1.12",
     "passport-google-oauth20": "^2.0.0",
-    "sanitize-html": "^2.17.5",
     "socket.io": "^4.7.5",
     "socket.io-valkey-adapter": "^0.1.1",
     "zod": "^4.4.3"

@@ -1,11 +1,15 @@
-import { X } from "lucide-react";
+import { useCallback } from "react";
+import { AlertCircle, X } from "lucide-react";
 
+import { Button } from "../ui/Button.jsx";
+import { EmptyState } from "../ui/EmptyState.jsx";
 import { IconButton } from "../ui/IconButton.jsx";
 import { Skeleton } from "../ui/Skeleton.jsx";
 import { MessageBubble } from "./MessageBubble.jsx";
 import { MessageComposer } from "./MessageComposer.jsx";
 import { useThread, useSendReply } from "../../hooks/useThread.js";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { useToast } from "../../context/ToastContext.jsx";
 import styles from "./ThreadPanel.module.css";
 
 /**
@@ -14,8 +18,19 @@ import styles from "./ThreadPanel.module.css";
  */
 export function ThreadPanel({ room, parentId, connected, onClose, onEdit, onDelete, onReact }) {
   const { user } = useAuth();
-  const { data, isLoading } = useThread(room.id, parentId);
-  const reply = useSendReply(room.id, parentId);
+  const { toast } = useToast();
+  const { data, isLoading, isError, refetch } = useThread(room.id, parentId);
+  const send = useSendReply(room.id, parentId);
+
+  // A reply is not optimistic, so a refusal has nowhere else to show itself.
+  const reply = useCallback(
+    async (text) => {
+      const ack = await send(text);
+      if (!ack?.ok) toast(ack?.error ?? "Could not send the reply", { variant: "error" });
+      return ack;
+    },
+    [send, toast]
+  );
 
   const bubbleProps = {
     currentUsername: user.username,
@@ -38,6 +53,18 @@ export function ThreadPanel({ room, parentId, connected, onClose, onEdit, onDele
       <div className={styles.body}>
         {isLoading ? (
           <Skeleton width="70%" height={44} radius="var(--radius-xl)" />
+        ) : /* A failed query leaves `data` undefined: say so, rather than reading .parent off it. */
+        isError || !data ? (
+          <EmptyState
+            icon={AlertCircle}
+            title="Couldn't load this thread"
+            body="The replies could not be fetched."
+            action={
+              <Button variant="secondary" size="sm" onClick={() => refetch()}>
+                Retry
+              </Button>
+            }
+          />
         ) : (
           <ol className={styles.list}>
             <MessageBubble
@@ -70,6 +97,7 @@ export function ThreadPanel({ room, parentId, connected, onClose, onEdit, onDele
         roomName={`thread in #${room.name}`}
         disabled={!connected}
         onSend={reply}
+        restoreOnFailure
       />
     </aside>
   );

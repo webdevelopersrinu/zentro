@@ -114,6 +114,11 @@ export function useToggleReaction() {
  * the ack either replaces the temporary message with the real one, or marks it
  * failed so the user can retry. The message is never sent over HTTP — the
  * socket both persists it and broadcasts it.
+ *
+ * A retry passes the failed message's id as `replaceId`: it re-uses that bubble
+ * rather than appending a second one. Minting a fresh temp id on every attempt
+ * would leave the failed bubble behind forever — nothing reconciles it (no ack
+ * carries its id) and nothing can delete it (it has no server id).
  */
 export function useSendMessage(roomId, author) {
   const queryClient = useQueryClient();
@@ -121,18 +126,25 @@ export function useSendMessage(roomId, author) {
   const key = queryKeys.messages(roomId);
 
   return useCallback(
-    async (text) => {
-      const id = nextTempId();
+    async (text, { replaceId } = {}) => {
+      const id = replaceId ?? nextTempId();
 
       queryClient.setQueryData(key, (page = EMPTY_PAGE) =>
-        appendMessage(page, {
-          id,
-          roomId,
-          text,
-          username: author.username,
-          createdAt: new Date().toISOString(),
-          status: "sending",
-        })
+        page.messages.some((message) => message.id === id)
+          ? replaceMessage(page, id, (message) => ({
+              ...message,
+              text,
+              status: "sending",
+              error: undefined,
+            }))
+          : appendMessage(page, {
+              id,
+              roomId,
+              text,
+              username: author.username,
+              createdAt: new Date().toISOString(),
+              status: "sending",
+            })
       );
 
       const ack = await emit(SOCKET_EVENTS.MESSAGE_SEND, { roomId, text });

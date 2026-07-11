@@ -1,8 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, render, screen, act, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { useSendMessage, useLoadOlderMessages } from "../../src/hooks/useMessages.js";
+import { MessageComposer } from "../../src/components/chat/MessageComposer.jsx";
 import * as roomService from "../../src/services/room.service.js";
 import { queryKeys } from "../../src/lib/queryKeys.js";
 
@@ -14,6 +16,17 @@ let emit;
 vi.mock("../../src/hooks/useSocketEvent.js", () => ({
   useSocketEmit: () => emit,
   useSocketEvent: vi.fn(),
+}));
+
+/**
+ * The emitter under test in the ack-timeout case is the REAL one, so it is
+ * imported past its own mock and given a fake socket through a fake context.
+ */
+const { useSocketEmit } = await vi.importActual("../../src/hooks/useSocketEvent.js");
+
+const socketRef = { current: null }; // one stable ref, as the real provider holds
+vi.mock("../../src/context/SocketContext.jsx", () => ({
+  useSocket: () => ({ socketRef, isReady: true }),
 }));
 
 // The hook is the unit here; the axios layer has its own tests.
@@ -90,6 +103,108 @@ describe("useSendMessage — optimistic send", () => {
     await act(async () => void (await send("hi")));
 
     expect(messages()[0].status).toBe("failed");
+  });
+});
+
+describe("useSendMessage — a send that never comes back", () => {
+  /** socket.io calls the ack with an Error when its own timeout expires. */
+  const deafSocket = () => ({
+    timeout: (ms) => ({
+      emit: (event, payload, ack) => setTimeout(() => ack(new Error("operation has timed out")), ms),
+    }),
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    socketRef.current = null;
+  });
+
+  it("fails the bubble once the ack times out, instead of leaving it 'sending' forever", async () => {
+    vi.useFakeTimers();
+    socketRef.current = deafSocket();
+    emit = renderHook(() => useSocketEmit()).result.current;
+
+    const { current: send } = renderSend();
+    let sent;
+    act(() => {
+      sent = send("hi");
+    });
+
+    expect(messages()[0].status).toBe("sending");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await sent;
+    });
+
+    expect(messages()[0]).toMatchObject({ status: "failed", error: "Timed out", text: "hi" });
+  });
+
+  it("hands back the same emitter across renders, so the bubbles' memo can hit", () => {
+    socketRef.current = deafSocket();
+    const { result, rerender } = renderHook(() => useSocketEmit());
+    const first = result.current;
+
+    rerender();
+
+    expect(result.current).toBe(first);
+  });
+});
+
+describe("useSendMessage — retry", () => {
+  it("re-uses the failed bubble rather than appending a second one", async () => {
+    emit = vi.fn().mockResolvedValue({ ok: false, error: "Timed out" });
+    const { current: send } = renderSend();
+
+    await act(async () => void (await send("hi")));
+    const failedId = messages()[0].id;
+
+    // Two further attempts, both refused: still one bubble, and still the same one.
+    await act(async () => void (await send("hi", { replaceId: failedId })));
+    await act(async () => void (await send("hi", { replaceId: failedId })));
+
+    expect(messages()).toHaveLength(1);
+    expect(messages()[0]).toMatchObject({ id: failedId, status: "failed" });
+  });
+
+  it("promotes the retried bubble in place when the resend succeeds", async () => {
+    emit = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, error: "Timed out" })
+      .mockResolvedValueOnce({ ok: true, message: real });
+    const { current: send } = renderSend();
+
+    await act(async () => void (await send("hi")));
+    const failedId = messages()[0].id;
+
+    await act(async () => void (await send("hi", { replaceId: failedId })));
+
+    expect(messages()).toHaveLength(1);
+    expect(messages()[0].id).toBe("server-1");
+    expect(messages()[0].status).toBeUndefined();
+  });
+});
+
+describe("MessageComposer — a refused send with no bubble to fail", () => {
+  const composer = (onSend) => {
+    render(<MessageComposer roomName="general" onSend={onSend} restoreOnFailure />);
+    return screen.getByRole("textbox", { name: "Message #general" });
+  };
+
+  it("puts the text back in the box when the reply is refused", async () => {
+    const input = composer(vi.fn().mockResolvedValue({ ok: false, error: "Not a member" }));
+
+    await userEvent.type(input, "does this survive{Enter}");
+
+    await waitFor(() => expect(input.value).toBe("does this survive"));
+  });
+
+  it("leaves the box empty when the reply lands", async () => {
+    const input = composer(vi.fn().mockResolvedValue({ ok: true, message: real }));
+
+    await userEvent.type(input, "landed{Enter}");
+
+    await waitFor(() => expect(input.value).toBe(""));
   });
 });
 

@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 
 import { MembersPanel } from "../../../src/components/chat/MembersPanel.jsx";
 import { AuthProvider } from "../../../src/context/AuthContext.jsx";
+import { ToastProvider } from "../../../src/context/ToastContext.jsx";
 import { server } from "../../msw/server.js";
 import { API_BASE, } from "../../../src/config/index.js";
 import { testUser } from "../../msw/handlers.js";
@@ -48,9 +49,12 @@ const renderPanel = async (roomProps, waitForName = "Deputy") => {
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <MembersPanel room={room(roomProps)} onInvite={vi.fn()} />
-      </AuthProvider>
+      {/* The moderation mutations now report their failures as toasts. */}
+      <ToastProvider>
+        <AuthProvider>
+          <MembersPanel room={room(roomProps)} onInvite={vi.fn()} />
+        </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
   await screen.findByText(waitForName);

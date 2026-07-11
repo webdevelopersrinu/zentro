@@ -27,14 +27,16 @@ export function ConversationPanel({
   onToggleSidebar,
 }) {
   const { user } = useAuth();
-  const { data: page, isLoading } = useMessages(room.id);
+  const { data: page, isLoading, isError, refetch } = useMessages(room.id);
   const send = useSendMessage(room.id, user);
   const { loadOlder, loadingOlder } = useLoadOlderMessages(room.id);
   const { receipts, recipientCount } = useReceipts(room.id);
   const { typists, handleKeystroke, stopTyping } = useTyping(room.id);
 
   // Stable identity, or MessageBubble's memo never hits.
-  const retry = useCallback((message) => send(message.text), [send]);
+  // `replaceId` reuses the failed bubble instead of leaving it behind and
+  // appending a second one for every attempt.
+  const retry = useCallback((message) => send(message.text, { replaceId: message.id }), [send]);
 
   return (
     <section className={styles.panel} aria-label={`Conversation in ${room.name}`}>
@@ -49,6 +51,8 @@ export function ConversationPanel({
         messages={page?.messages}
         hasMore={page?.hasMore}
         loading={isLoading}
+        loadError={isError}
+        onReload={refetch}
         loadingOlder={loadingOlder}
         onLoadOlder={loadOlder}
         currentUsername={user.username}

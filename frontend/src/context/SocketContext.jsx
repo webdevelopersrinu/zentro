@@ -23,15 +23,27 @@ export const CONNECTION = {
 export function SocketProvider({ children }) {
   const socketRef = useRef(null);
   const [status, setStatus] = useState(CONNECTION.CONNECTING);
-  const [token, setToken] = useState(getAccessToken);
+  const [signedIn, setSignedIn] = useState(() => Boolean(getAccessToken()));
 
-  // A refreshed token means the next reconnect must present the new one.
-  useEffect(() => onAccessTokenChange(setToken), []);
+  /**
+   * A refreshed token is handed to the LIVE socket, not used to rebuild it. The
+   * handshake is only re-read on reconnect, so this is all a future reconnect
+   * needs — and tearing the socket down every 15 minutes would drop every
+   * message broadcast during the gap, with nothing to refetch them.
+   */
+  useEffect(
+    () =>
+      onAccessTokenChange((token) => {
+        if (socketRef.current) socketRef.current.auth = { token };
+        setSignedIn(Boolean(token));
+      }),
+    []
+  );
 
   useEffect(() => {
-    if (!token) return undefined;
+    if (!signedIn) return undefined;
 
-    const socket = createSocket(token);
+    const socket = createSocket(getAccessToken());
     socketRef.current = socket;
     setStatus(CONNECTION.CONNECTING);
 
@@ -44,7 +56,7 @@ export function SocketProvider({ children }) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token]);
+  }, [signedIn]);
 
   const value = useMemo(
     () => ({

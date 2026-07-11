@@ -43,13 +43,19 @@
     z-index: var(--z-modal);
     padding-bottom: env(safe-area-inset-bottom);
     transform: translateX(100%);
-    transition: transform var(--duration-base) var(--ease-out);
+    /* visibility, not just transform: an off-canvas drawer must leave the tab
+       order and the a11y tree too. It flips back at the END of the slide-out,
+       so the transition still plays. */
+    visibility: hidden;
+    transition: transform var(--duration-base) var(--ease-out),
+      visibility var(--duration-base) var(--ease-out);
     box-shadow: var(--shadow-lg);
   }
 
   .members.open,
   .thread.open {
     transform: translateX(0);
+    visibility: visible;
   }
 
   /* The thread mounts already open, so it slides in rather than transitions. */
@@ -66,12 +72,15 @@
     z-index: var(--z-modal);
     padding-bottom: env(safe-area-inset-bottom);
     transform: translateX(-100%);
-    transition: transform var(--duration-base) var(--ease-out);
+    visibility: hidden;
+    transition: transform var(--duration-base) var(--ease-out),
+      visibility var(--duration-base) var(--ease-out);
     box-shadow: var(--shadow-lg);
   }
 
   .sidebar.open {
     transform: translateX(0);
+    visibility: visible;
   }
 
   .sidebar,

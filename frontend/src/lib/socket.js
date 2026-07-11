@@ -7,8 +7,10 @@ import { SOCKET_URL } from "../config/index.js";
  *
  * The token is passed in the handshake, so a socket outlives its 15-minute
  * token — the connection was authorised when it was made, and the server
- * re-checks room membership on every message anyway. When the token rotates we
- * rebuild the socket so a future reconnect presents a valid one.
+ * re-checks room membership on every message anyway. When the token rotates,
+ * SocketContext assigns the new one onto `socket.auth` IN PLACE; the live
+ * connection is NOT rebuilt (that tore down every subscription every 15
+ * minutes). Only a future reconnect presents the rotated token.
  */
 export function createSocket(token) {
   return io(SOCKET_URL, {

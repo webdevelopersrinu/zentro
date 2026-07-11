@@ -1,7 +1,8 @@
 import { Fragment, useMemo } from "react";
-import { ArrowDown, MessageSquare } from "lucide-react";
+import { AlertCircle, ArrowDown, MessageSquare } from "lucide-react";
 
 import { MessageBubble } from "./MessageBubble.jsx";
+import { Button } from "../ui/Button.jsx";
 import { EmptyState } from "../ui/EmptyState.jsx";
 import { Skeleton } from "../ui/Skeleton.jsx";
 import { Spinner } from "../ui/Spinner.jsx";
@@ -34,6 +35,8 @@ export function MessageList({
   roomId,
   messages = [],
   loading,
+  loadError = false,
+  onReload,
   currentUsername,
   onRetry,
   onEdit,
@@ -81,6 +84,27 @@ export function MessageList({
     );
   }
 
+  /**
+   * A failed fetch is not an empty room. Telling the user "no messages yet" when
+   * the request 500'd invites them to re-send something they simply cannot see.
+   */
+  if (loadError && !messages.length) {
+    return (
+      <div className={styles.list}>
+        <EmptyState
+          icon={AlertCircle}
+          title="Couldn't load messages"
+          body="Something went wrong fetching this room's history."
+          action={
+            <Button variant="secondary" size="sm" onClick={onReload}>
+              Retry
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
   if (!messages.length) {
     return (
       <div className={styles.list}>
@@ -95,7 +119,9 @@ export function MessageList({
         ref={containerRef}
         className={styles.list}
         onScroll={onScroll}
-        aria-live="polite"
+        // role="log" announces ADDITIONS only. aria-live on the whole list made a
+        // room switch — or a 50-message prepend — queue fifty announcements.
+        role="log"
         aria-label="Messages"
       >
         {loadingOlder && (

@@ -4,6 +4,7 @@ import { Message } from "../models/Message.js";
 import { RoomRead } from "../models/RoomRead.js";
 import * as userService from "./user.service.js";
 import { getOnlineUserIds } from "./presence.service.js";
+import { getIO } from "../lib/io.js";
 import { notifyUser, notifyRoom } from "../utils/notify.js";
 import { AppError } from "../utils/AppError.js";
 import { escapeRegex } from "../utils/sanitize.js";
@@ -12,6 +13,7 @@ import {
   SOCKET_EVENTS,
   MESSAGE_PAGE,
   SEARCH,
+  userChannel,
 } from "../constants/index.js";
 
 // ── predicates & guards ────────────────────────────────────────────────────
@@ -144,6 +146,32 @@ export async function listJoinRequests(room, userId) {
 }
 
 // ── writes ─────────────────────────────────────────────────────────────────
+
+/**
+ * The ONE way membership lists are written.
+ *
+ * A load-mutate-save is not safe here: `list = list.filter(...)` compiles to a
+ * $set of the whole path, so two admins settling two different requests would
+ * each write back their own stale copy and one request would survive forever.
+ * `push` compiles to $push, so two concurrent joins list the same user twice —
+ * which inflates memberCount and permanently breaks that room's read receipts.
+ * $addToSet/$pull in a single updateOne are the server-side, idempotent form.
+ *
+ * The in-memory doc is replayed to match, because callers serialize `room`
+ * straight back to the client.
+ */
+async function mutateMembers(room, ops) {
+  await Room.updateOne({ _id: room._id }, ops);
+
+  for (const [path, id] of Object.entries(ops.$addToSet ?? {}))
+    if (!contains(room[path], id)) room[path].push(id);
+
+  for (const [path, id] of Object.entries(ops.$pull ?? {}))
+    room[path] = (room[path] ?? []).filter((x) => !idEq(x, id));
+
+  return room;
+}
+
 export const createRoom = ({ userId, name, visibility }) =>
   Room.create({
     name,
@@ -165,21 +193,20 @@ export async function joinRoom(room, user) {
 
   // An invite is a pre-approved join, so accepting one IS joining.
   if (isInvited(room, user.id)) {
-    removeInvite(room, user.id);
-    room.members.push(user.id);
-    await room.save();
+    await mutateMembers(room, {
+      $addToSet: { members: user.id },
+      $pull: { invites: user.id },
+    });
     return { joined: true };
   }
 
   if (room.visibility === ROOM_VISIBILITY.PUBLIC) {
-    room.members.push(user.id);
-    await room.save();
+    await mutateMembers(room, { $addToSet: { members: user.id } });
     return { joined: true };
   }
 
   if (!hasRequested(room, user.id)) {
-    room.joinRequests.push(user.id);
-    await room.save();
+    await mutateMembers(room, { $addToSet: { joinRequests: user.id } });
 
     // Every admin can approve it, so every admin is told about it.
     for (const adminId of adminIds(room)) {
@@ -198,22 +225,15 @@ export async function joinRoom(room, user) {
   return { requested: true };
 }
 
-const removeRequest = (room, userId) => {
-  room.joinRequests = room.joinRequests.filter((u) => !idEq(u, userId));
-};
-
-const removeInvite = (room, userId) => {
-  room.invites = (room.invites ?? []).filter((u) => !idEq(u, userId));
-};
-
 export async function approveRequest(room, actorId, targetUserId) {
   assertAdmin(room, actorId, "approve requests for");
   if (!hasRequested(room, targetUserId))
     throw AppError.notFound("No such pending request");
 
-  removeRequest(room, targetUserId);
-  if (!isMember(room, targetUserId)) room.members.push(targetUserId);
-  await room.save();
+  await mutateMembers(room, {
+    $addToSet: { members: targetUserId },
+    $pull: { joinRequests: targetUserId },
+  });
 
   notifyUser(targetUserId, SOCKET_EVENTS.REQUEST_APPROVED, {
     roomId: String(room._id),
@@ -227,8 +247,7 @@ export async function rejectRequest(room, actorId, targetUserId) {
   if (!hasRequested(room, targetUserId))
     throw AppError.notFound("No such pending request");
 
-  removeRequest(room, targetUserId);
-  await room.save();
+  await mutateMembers(room, { $pull: { joinRequests: targetUserId } });
 
   notifyUser(targetUserId, SOCKET_EVENTS.REQUEST_REJECTED, {
     roomId: String(room._id),
@@ -252,9 +271,10 @@ export async function inviteByUsername(room, actor, username) {
   if (isMember(room, invitee._id)) throw AppError.badRequest("Already a member");
 
   if (hasRequested(room, invitee._id)) {
-    removeRequest(room, invitee._id);
-    room.members.push(invitee._id);
-    await room.save();
+    await mutateMembers(room, {
+      $addToSet: { members: invitee._id },
+      $pull: { joinRequests: invitee._id },
+    });
 
     notifyUser(invitee._id, SOCKET_EVENTS.REQUEST_APPROVED, {
       roomId: String(room._id),
@@ -264,8 +284,7 @@ export async function inviteByUsername(room, actor, username) {
   }
 
   if (!isInvited(room, invitee._id)) {
-    room.invites.push(invitee._id);
-    await room.save();
+    await mutateMembers(room, { $addToSet: { invites: invitee._id } });
 
     notifyUser(invitee._id, SOCKET_EVENTS.ROOM_INVITED, {
       roomId: String(room._id),
@@ -280,8 +299,7 @@ export async function inviteByUsername(room, actor, username) {
 export async function declineInvite(room, userId) {
   if (!isInvited(room, userId)) throw AppError.notFound("No pending invite");
 
-  removeInvite(room, userId);
-  await room.save();
+  await mutateMembers(room, { $pull: { invites: userId } });
 
   notifyUser(room.creator, SOCKET_EVENTS.INVITE_DECLINED, {
     roomId: String(room._id),
@@ -296,11 +314,15 @@ export async function leaveRoom(room, userId) {
     throw AppError.badRequest("The creator cannot leave; delete the room instead");
   assertMember(room, userId);
 
-  room.members = room.members.filter((m) => !idEq(m, userId));
   // Moderation powers do not survive leaving the room they applied to.
-  room.admins = (room.admins ?? []).filter((a) => !idEq(a, userId));
-  await room.save();
+  await mutateMembers(room, { $pull: { members: userId, admins: userId } });
   await RoomRead.deleteOne({ room: room._id, user: userId });
+
+  // Membership is only checked when a message is WRITTEN; delivery is decided
+  // purely by socket-room occupancy. Without this, an ex-member keeps receiving
+  // the room's messages, edits, typing and presence until they reconnect.
+  // socketsLeave reaches every server through the Valkey adapter.
+  await getIO()?.in(userChannel(userId)).socketsLeave(String(room._id));
 }
 
 // ── admins ─────────────────────────────────────────────────────────────────
@@ -317,8 +339,7 @@ export async function promoteToAdmin(room, actorId, targetUserId) {
   if (!isMember(room, targetUserId)) throw AppError.notFound("Not a member of this room");
   if (isAdmin(room, targetUserId)) throw AppError.badRequest("Already an admin");
 
-  room.admins.push(targetUserId);
-  await room.save();
+  await mutateMembers(room, { $addToSet: { admins: targetUserId } });
 
   notifyUser(targetUserId, SOCKET_EVENTS.ROOM_ADMIN_CHANGED, {
     roomId: String(room._id),
@@ -334,8 +355,7 @@ export async function demoteAdmin(room, actorId, targetUserId) {
     throw AppError.badRequest("The creator is always an admin");
   if (!isAdmin(room, targetUserId)) throw AppError.badRequest("Not an admin");
 
-  room.admins = room.admins.filter((a) => !idEq(a, targetUserId));
-  await room.save();
+  await mutateMembers(room, { $pull: { admins: targetUserId } });
 
   notifyUser(targetUserId, SOCKET_EVENTS.ROOM_ADMIN_CHANGED, {
     roomId: String(room._id),
@@ -430,6 +450,10 @@ export async function deleteRoom(room, actorId) {
   await Message.deleteMany({ room: room._id });
   await RoomRead.deleteMany({ room: room._id });
   await room.deleteOne();
+
+  // The room is gone, so nobody may stay subscribed to its socket channel —
+  // otherwise in-flight traffic still reaches sockets that are sitting in it.
+  await getIO()?.socketsLeave(roomId);
 
   // Otherwise a member sitting in the room keeps a ghost open until a refetch.
   for (const memberId of members) {

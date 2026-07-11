@@ -17,15 +17,30 @@ export function ReactionPicker({ onPick }) {
   const [query, setQuery] = useState("");
   const ref = useRef(null);
   const searchRef = useRef(null);
+  const triggerRef = useRef(null);
 
-  // Clicking anywhere else, or pressing Escape, dismisses it.
+  /**
+   * The picker unmounts on close, so whatever was focused inside it disappears
+   * and focus falls to <body> — throwing a keyboard user back to the top of the
+   * page. Send focus back to the trigger instead.
+   *
+   * Not when the user dismissed it by clicking elsewhere, though: they chose
+   * where to go, and yanking focus back would fight them.
+   */
+  const restoreFocus = useRef(true);
+
+  const close = ({ restore = true } = {}) => {
+    restoreFocus.current = restore;
+    setOpen(false);
+  };
+
   useEffect(() => {
     if (!open) return;
 
     const dismiss = (event) => {
-      if (!ref.current?.contains(event.target)) setOpen(false);
+      if (!ref.current?.contains(event.target)) close({ restore: false });
     };
-    const onKeyDown = (event) => event.key === "Escape" && setOpen(false);
+    const onKeyDown = (event) => event.key === "Escape" && close();
 
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", onKeyDown);
@@ -35,12 +50,19 @@ export function ReactionPicker({ onPick }) {
     };
   }, [open]);
 
+  // Guards the effect below: on first render the picker is closed but was never
+  // open, and focusing the trigger then would steal focus on page load.
+  const hasOpened = useRef(false);
+  if (open) hasOpened.current = true;
+
   // Reopening should always land on the quick row, never on a stale search.
   useEffect(() => {
-    if (!open) {
-      setFull(false);
-      setQuery("");
-    }
+    if (open || !hasOpened.current) return;
+
+    setFull(false);
+    setQuery("");
+    if (restoreFocus.current) triggerRef.current?.focus();
+    restoreFocus.current = true;
   }, [open]);
 
   useEffect(() => {
@@ -49,7 +71,7 @@ export function ReactionPicker({ onPick }) {
 
   const pick = (emoji) => {
     onPick(emoji);
-    setOpen(false);
+    close();
   };
 
   const groups = full ? searchEmoji(query) : [];
@@ -57,21 +79,27 @@ export function ReactionPicker({ onPick }) {
   return (
     <span className={styles.wrap} ref={ref}>
       <IconButton
+        ref={triggerRef}
         label="Add reaction"
         size="sm"
         aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => (open ? close() : setOpen(true))}
       >
         <SmilePlus size={14} />
       </IconButton>
 
+      {/*
+        A group of buttons, not a `menu`. role="menu" is a promise of arrow-key
+        roving navigation (WAI-ARIA), and we implement none — so it told screen
+        readers to expect a keyboard model that does not exist. Plain buttons in
+        a labelled group tell the truth, and Tab already works.
+      */}
       {open && !full && (
-        <div className={styles.palette} role="menu" aria-label="Pick a reaction">
+        <div className={styles.palette} role="group" aria-label="Pick a reaction">
           {REACTION_EMOJIS.map((emoji) => (
             <button
               key={emoji}
               type="button"
-              role="menuitem"
               className={styles.option}
               aria-label={`React with ${emoji}`}
               onClick={() => pick(emoji)}
@@ -82,7 +110,6 @@ export function ReactionPicker({ onPick }) {
 
           <button
             type="button"
-            role="menuitem"
             className={styles.more}
             aria-label="More emoji"
             onClick={() => setFull(true)}

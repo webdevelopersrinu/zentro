@@ -224,6 +224,47 @@ describe("Reactions", () => {
     });
   });
 
+  // The old read-modify-write let both writers see "no group yet" and each push
+  // one, corrupting the document into two groups for the same emoji: the UI drew
+  // the emoji twice, and every later toggle only ever found the FIRST group — so
+  // the second user could never take their own reaction back.
+  describe("two people reacting at the same instant", () => {
+    it("produces exactly one group holding both of them", async () => {
+      const aliceSocket = await connect(alice.token);
+      const bobSocket = await connect(bob.token);
+      const message = await say(aliceSocket, "race");
+
+      await Promise.all([
+        react(aliceSocket, message.id, THUMBS),
+        react(bobSocket, message.id, THUMBS),
+      ]);
+
+      const stored = await Message.findById(message.id);
+      expect(stored.reactions).toHaveLength(1);
+      expect(stored.reactions[0].emoji).toBe(THUMBS);
+      expect(stored.reactions[0].users.map(String).sort()).toEqual(
+        [String(alice.user.id), String(bob.user.id)].sort()
+      );
+    });
+
+    it("still lets each of them take their own reaction back", async () => {
+      const aliceSocket = await connect(alice.token);
+      const bobSocket = await connect(bob.token);
+      const message = await say(aliceSocket, "race");
+      await Promise.all([
+        react(aliceSocket, message.id, THUMBS),
+        react(bobSocket, message.id, THUMBS),
+      ]);
+
+      await react(aliceSocket, message.id, THUMBS);
+      const ack = await react(bobSocket, message.id, THUMBS);
+
+      expect(groupsOf(ack)).toEqual([]);
+      const stored = await Message.findById(message.id);
+      expect(stored.reactions).toHaveLength(0);
+    });
+  });
+
   it("survives in history, so reactions are not lost on reload", async () => {
     const socket = await connect(bob.token);
     const message = await say(socket, "persisted");

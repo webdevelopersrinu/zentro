@@ -1,5 +1,3 @@
-import sanitizeHtml from "sanitize-html";
-
 import { REACTION_MAX_CODE_POINTS } from "../constants/index.js";
 
 /**
@@ -32,19 +30,39 @@ export function isEmoji(value) {
 }
 
 /**
+ * A complete tag, and nothing else: a script/style element with its contents, an
+ * HTML comment, or any single `<tag …>` / `</tag>`. A lone `<` that never closes
+ * is NOT a tag — "if a<b then" is a sentence, not markup.
+ */
+const TAG = /<(?:script|style)\b[^]*?<\/(?:script|style)\s*>|<!--[^]*?-->|<\/?[a-zA-Z][^<>]*>/gi;
+
+/**
  * Strip ALL markup. Chat messages and room names are plain text; there is no
  * legitimate reason for a user to submit HTML.
  *
  * React escapes on render, so this is defence in depth — it protects any other
  * consumer of the data (exports, emails, a future non-React client) and stops
  * stored XSS at the source rather than at the last mile.
+ *
+ * Deliberately NOT sanitize-html: that library entity-encodes the text it keeps,
+ * so "Tom & Jerry" was stored as "Tom &amp; Jerry" (which React then renders
+ * literally, and a second edit compounds to &amp;amp;), and its HTML parser
+ * swallowed "if a<b then" down to "if a". This removes markup and touches
+ * nothing else — no encoding, therefore no mangling and no compounding.
+ *
+ * Looped to a fixpoint because deleting a tag can leave its neighbours forming a
+ * new one ("<scr<b>ipt>").
  */
-export const stripHtml = (value) =>
-  sanitizeHtml(String(value ?? ""), {
-    allowedTags: [],
-    allowedAttributes: {},
-    disallowedTagsMode: "discard",
-  }).trim();
+export const stripHtml = (value) => {
+  let text = String(value ?? "");
+  for (let previous; previous !== text; ) {
+    previous = text;
+    text = text.replace(TAG, "");
+  }
+  // trim() covers every Unicode space, U+00A0 included: a body of one
+  // non-breaking space must be an empty message, not a blank bubble.
+  return text.trim();
+};
 
 /**
  * Neutralise every regex metacharacter, so a search term matches literally.

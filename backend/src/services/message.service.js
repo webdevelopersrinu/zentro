@@ -90,7 +90,11 @@ export async function createMessage({ roomId, sender, username, text, parentId =
 
   // Drives the sidebar's unread dot. Stamped after the insert, so a failed
   // write can never mark a room unread for a message nobody will ever see.
-  await Room.updateOne({ _id: room._id }, { lastMessageAt: message.createdAt });
+  //
+  // $max, not $set: several app servers write this room concurrently, and a $set
+  // from an older message landing last would push lastMessageAt backwards —
+  // silently dropping the unread dot for a message that already exists.
+  await Room.updateOne({ _id: room._id }, { $max: { lastMessageAt: message.createdAt } });
 
   // Sending is reading: without this the author's own room lights up unread.
   // The timestamps are equal, and "unread" is a strict `>`.
@@ -151,18 +155,46 @@ export async function toggleReaction({ messageId, userId, emoji }) {
   if (!isEmoji(emoji)) throw AppError.badRequest("Unsupported reaction");
 
   const message = await messageOrFail(messageId, userId);
-  const group = message.reactions.find((reaction) => reaction.emoji === emoji);
+  const _id = message._id;
+  const mine = message.reactions.some(
+    (reaction) =>
+      reaction.emoji === emoji && reaction.users.some((id) => String(id) === String(userId))
+  );
 
-  if (!group) {
-    message.reactions.push({ emoji, users: [userId] });
-  } else if (group.users.some((id) => String(id) === String(userId))) {
-    group.users = group.users.filter((id) => String(id) !== String(userId));
-    if (!group.users.length)
-      message.reactions = message.reactions.filter((reaction) => reaction.emoji !== emoji);
+  // Every write below is a single atomic Mongo update. Read-modify-write on the
+  // loaded doc lost races: two people reacting with the same emoji in the same
+  // tick each saw no group and each pushed one, leaving TWO groups for that
+  // emoji — the UI showed the emoji twice and, because every later toggle finds
+  // only the first group, the second user could never take their reaction back.
+  if (mine) {
+    await Message.updateOne(
+      { _id, "reactions.emoji": emoji },
+      { $pull: { "reactions.$.users": userId } }
+    );
+    await Message.updateOne({ _id }, { $pull: { reactions: { users: { $size: 0 } } } });
   } else {
-    group.users.push(userId);
+    const { matchedCount } = await Message.updateOne(
+      { _id, "reactions.emoji": emoji },
+      { $addToSet: { "reactions.$.users": userId } }
+    );
+
+    // No group yet — create it, but only if nobody created it in the meantime.
+    // The $ne guard is what makes the concurrent create safe: the loser matches
+    // nothing, so it retries into the $addToSet above rather than pushing a
+    // duplicate group.
+    if (matchedCount === 0) {
+      const created = await Message.updateOne(
+        { _id, "reactions.emoji": { $ne: emoji } },
+        { $push: { reactions: { emoji, users: [userId] } } }
+      );
+      if (created.matchedCount === 0)
+        await Message.updateOne(
+          { _id, "reactions.emoji": emoji },
+          { $addToSet: { "reactions.$.users": userId } }
+        );
+    }
   }
 
-  await message.save();
-  return message;
+  // The caller serializes and broadcasts this, so it must be the post-update state.
+  return Message.findById(_id);
 }

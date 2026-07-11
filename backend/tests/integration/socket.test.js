@@ -14,6 +14,7 @@ import {
   SOCKET_RATE_LIMIT,
 } from "../../src/constants/index.js";
 import { Message } from "../../src/models/Message.js";
+import { getOnlineUserIds } from "../../src/services/presence.service.js";
 
 const PUBLIC = { name: "lobby", visibility: ROOM_VISIBILITY.PUBLIC };
 const PRIVATE = { name: "vault", visibility: ROOM_VISIBILITY.PRIVATE };
@@ -191,6 +192,32 @@ describe("Socket layer", () => {
       await expect(seen).resolves.toMatchObject({ username: "owner", isTyping: true });
       await expect(echoed).resolves.toBe(false);
     });
+
+    // /rooms/discover hands out private room ids by design, so knowing an id
+    // must not be enough to push "stranger is typing…" into a room you're not in.
+    it("ignores TYPING for a room the sender is not a member of", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+
+      const ownerSocket = await connect(owner.token);
+      const strangerSocket = await connect(stranger.token);
+
+      const leaked = expectNoEvent(ownerSocket, SOCKET_EVENTS.TYPING);
+      strangerSocket.emit(SOCKET_EVENTS.TYPING, { roomId: room.id, isTyping: true });
+
+      await expect(leaked).resolves.toBe(false);
+    });
+
+    it("ignores ROOM_LEAVE for a room the sender is not a member of", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+
+      const ownerSocket = await connect(owner.token);
+      const strangerSocket = await connect(stranger.token);
+
+      const leaked = expectNoEvent(ownerSocket, SOCKET_EVENTS.PRESENCE_LEFT);
+      strangerSocket.emit(SOCKET_EVENTS.ROOM_LEAVE, room.id);
+
+      await expect(leaked).resolves.toBe(false);
+    });
   });
 
   describe("Presence", () => {
@@ -221,6 +248,28 @@ describe("Socket layer", () => {
       memberSocket.disconnect();
 
       await expect(departure).resolves.toMatchObject({ username: "member" });
+    });
+
+    // Closing one of two tabs must not grey you out for everyone: the members
+    // query has a 30s staleTime and no refetch-on-focus, so a wrong dot sticks.
+    it("stays online while another tab of the same user is open", async () => {
+      const room = await createRoom(owner.client, PUBLIC);
+      await member.client.post(`/api/rooms/${room.id}/join`);
+
+      const ownerSocket = await connect(owner.token);
+      const tabOne = await connect(member.token);
+      const tabTwo = await connect(member.token);
+
+      const premature = expectNoEvent(ownerSocket, SOCKET_EVENTS.PRESENCE_LEFT);
+      tabOne.disconnect();
+      await expect(premature).resolves.toBe(false);
+
+      const departure = waitFor(ownerSocket, SOCKET_EVENTS.PRESENCE_LEFT);
+      tabTwo.disconnect();
+      await expect(departure).resolves.toMatchObject({
+        username: "member",
+        roomId: room.id,
+      });
     });
   });
 
@@ -304,6 +353,24 @@ describe("Socket layer", () => {
 
       expect(byName.owner).toMatchObject({ online: true, isCreator: true });
       expect(byName.member).toMatchObject({ online: false, isCreator: false });
+    });
+
+    it("getOnlineUserIds returns only the connected users, in one lookup", async () => {
+      await connect(owner.token);
+      await connect(stranger.token);
+      await connect(stranger.token); // a second tab must not duplicate anything
+
+      const online = await getOnlineUserIds([
+        owner.user.id,
+        member.user.id, // never connects
+        stranger.user.id,
+      ]);
+
+      expect(online).toEqual(new Set([owner.user.id, stranger.user.id]));
+    });
+
+    it("returns an empty Set for users that are all offline", async () => {
+      await expect(getOnlineUserIds([owner.user.id])).resolves.toEqual(new Set());
     });
   });
 });

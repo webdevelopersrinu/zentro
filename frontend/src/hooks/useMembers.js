@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import * as roomService from "../services/room.service.js";
 import { queryKeys } from "../lib/queryKeys.js";
+import { useToast } from "../context/ToastContext.jsx";
 
 export function useMembers(roomId, { enabled = true } = {}) {
   return useQuery({
@@ -26,6 +27,7 @@ export function useRequests(roomId, { enabled = false } = {}) {
  */
 function useRequestDecision(roomId, decide) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const key = queryKeys.requests(roomId);
 
   return useMutation({
@@ -40,8 +42,11 @@ function useRequestDecision(roomId, decide) {
       return { previous };
     },
 
-    onError: (_error, _userId, context) => {
+    // Rolling the row back is not a report: a request that silently reappears
+    // reads as a UI glitch, not as a refusal.
+    onError: (error, _userId, context) => {
       queryClient.setQueryData(key, context?.previous);
+      toast(error.message, { variant: "error" });
     },
 
     onSuccess: () => {
@@ -62,12 +67,16 @@ export const useRejectRequest = (roomId) =>
  */
 function useAdminChange(roomId, change) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: (userId) => change(roomId, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.members(roomId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.rooms });
     },
+    // Without this the roster simply does not change and the creator walks away
+    // believing they granted moderation.
+    onError: (error) => toast(error.message, { variant: "error" }),
   });
 }
 
@@ -76,11 +85,13 @@ export const useDemoteAdmin = (roomId) => useAdminChange(roomId, roomService.dem
 
 export function useInviteUser(roomId) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: (username) => roomService.inviteUser(roomId, username),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.members(roomId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.rooms });
     },
+    onError: (error) => toast(error.message, { variant: "error" }),
   });
 }

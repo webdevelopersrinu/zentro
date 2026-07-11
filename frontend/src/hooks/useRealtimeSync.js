@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../lib/queryKeys.js";
@@ -32,6 +33,20 @@ export function useRealtimeSync({ activeRoomId, onUnread, onRead }) {
     if (queryClient.getQueryData(key)) queryClient.setQueryData(key, update);
   };
 
+  /**
+   * A reconnect means we were deaf for a while, and nothing replays what was
+   * broadcast in the gap. Every room-scoped key hangs off ["rooms"], so a single
+   * invalidation covers the open room's history, its receipts and the room lists
+   * — and only ACTIVE queries actually refetch. Skipped on the first READY: the
+   * queries have only just been fetched.
+   */
+  const connectedBefore = useRef(false);
+
+  useSocketEvent(SOCKET_EVENTS.READY, () => {
+    if (connectedBefore.current) queryClient.invalidateQueries({ queryKey: queryKeys.rooms });
+    connectedBefore.current = true;
+  });
+
   useSocketEvent(SOCKET_EVENTS.MESSAGE_NEW, (message) => {
     if (message.parentId) {
       /**
@@ -56,8 +71,8 @@ export function useRealtimeSync({ activeRoomId, onUnread, onRead }) {
 
     // A message in a room you are not looking at earns a dot, not a toast.
     // One you ARE looking at is read on arrival, so a reload shows no dot.
-    // ponytail: one small upsert per message in the open room. Throttle it if
-    // a busy room ever makes that write rate show up in the database metrics.
+    // onRead is trailing-debounced by the caller: the server broadcasts every
+    // read to every member, so one call per message is quadratic in room size.
     if (message.roomId !== activeRoomId) onUnread(message.roomId);
     else onRead?.(message.roomId);
   });

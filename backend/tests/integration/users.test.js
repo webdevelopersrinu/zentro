@@ -15,7 +15,9 @@ describe("Users API", () => {
   });
 
   describe("GET /api/users/search", () => {
-    it("matches on a username substring", async () => {
+    // Prefix, not substring: the query is anchored (`^al`) so it can use the
+    // username index instead of scanning every user.
+    it("matches on a username prefix", async () => {
       const res = await alice.client.get("/api/users/search?q=al");
 
       expect(res.status).toBe(200);

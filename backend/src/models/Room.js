@@ -42,4 +42,8 @@ const roomSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// The hottest query in the app: the sidebar refresh AND every socket connect
+// (auto-join) both ask for "rooms this user is in, newest first".
+roomSchema.index({ members: 1, updatedAt: -1 });
+
 export const Room = mongoose.model("Room", roomSchema);

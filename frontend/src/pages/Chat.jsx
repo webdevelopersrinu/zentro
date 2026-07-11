@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Compass, MessageSquare } from "lucide-react";
 
 import { Sidebar } from "../components/chat/Sidebar.jsx";
@@ -12,6 +12,7 @@ import { InviteModal } from "../components/modals/InviteModal.jsx";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog.jsx";
 import { EmptyState } from "../components/ui/EmptyState.jsx";
 import { useChatState } from "../hooks/useChatState.js";
+import { useRoomUrl, useBackToClose } from "../hooks/useHistoryNav.js";
 import { useCreateRoom } from "../hooks/useRooms.js";
 import { useEditMessage, useDeleteMessage, useToggleReaction } from "../hooks/useMessages.js";
 import { useSocket } from "../context/SocketContext.jsx";
@@ -29,7 +30,43 @@ import styles from "./Chat.module.css";
  */
 const DESKTOP = "(min-width: 1200px)";
 const WIDE = "(min-width: 1600px)"; // two side panels still leave the conversation >= 560px
+const SIDEBAR_DRAWER = "(max-width: 767px)";
+const SIDE_PANEL_DRAWER = "(max-width: 1199px)";
 const matches = (query) => window.matchMedia?.(query).matches ?? false;
+
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/** Live answer to "is this panel currently an overlay?", not a boot-time snapshot. */
+function useMatchMedia(query) {
+  const [active, setActive] = useState(() => matches(query));
+
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return undefined;
+
+    const sync = () => setActive(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [query]);
+
+  return active;
+}
+
+/**
+ * An overlay drawer must take focus when it opens and hand it back when it
+ * closes — otherwise the keyboard user is left on a trigger behind a scrim, or
+ * (worse) nowhere at all once the drawer goes inert.
+ */
+function useDrawerFocus(open, ref) {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const trigger = document.activeElement;
+    ref.current?.querySelector(FOCUSABLE)?.focus();
+    return () => trigger?.focus?.();
+  }, [open, ref]);
+}
 
 export default function Chat() {
   const chat = useChatState();
@@ -67,9 +104,22 @@ export default function Chat() {
     if (!matches(WIDE)) setMembersOpen(false);
   }, []);
 
+  /**
+   * The reaction ack was being thrown away, so a refused reaction was a tap that
+   * did nothing — forever, with no explanation. Wrapping it here keeps the memo
+   * stable, which is what stops every bubble in the room re-rendering.
+   */
   const messageActions = useMemo(
-    () => ({ onEdit: edit, onDelete: setPendingDelete, onReact: react }),
-    [edit, react]
+    () => ({
+      onEdit: edit,
+      onDelete: setPendingDelete,
+      onReact: async (messageId, emoji) => {
+        const ack = await react(messageId, emoji);
+        if (!ack?.ok) toast(ack?.error ?? "Could not add that reaction", { variant: "error" });
+        return ack;
+      },
+    }),
+    [edit, react, toast]
   );
 
   // Narrowing past the wide tier with both panels open would crush the conversation.
@@ -91,11 +141,11 @@ export default function Chat() {
   };
 
   // The scrim only exists below the desktop tier, where every panel is an overlay.
-  const closeAll = () => {
+  const closeAll = useCallback(() => {
     setSidebarOpen(false);
     setMembersOpen(false);
     setThreadId(null);
-  };
+  }, []);
 
   const handleCreate = ({ name, visibility }, close) =>
     createRoom.mutate(
@@ -123,9 +173,65 @@ export default function Chat() {
   const threadOpen = Boolean(room?.isMember && threadId);
   const scrimUp = sidebarOpen || membersOpen || threadOpen;
 
+  /**
+   * A closed drawer is hidden by transform alone, which hides it from the eye and
+   * from nobody else: it keeps its place in the tab order and in the a11y tree.
+   * At phone width that put ~10 invisible stops (room search, every room, "Create
+   * room", "Sign out") in front of a keyboard user's very first Tab. `inert` is
+   * the platform's answer — but only where the panel really is an overlay; in the
+   * laptop tier these same panels sit in the flow and must stay usable.
+   */
+  const sidebarIsDrawer = useMatchMedia(SIDEBAR_DRAWER);
+  const sidePanelIsDrawer = useMatchMedia(SIDE_PANEL_DRAWER);
+
+  const sidebarRef = useRef(null);
+  const membersRef = useRef(null);
+
+  /**
+   * The only handle that opens the sidebar lives in the conversation header, so
+   * on a phone with no room open there is nothing to press. Before `inert` that
+   * merely looked broken; now it would genuinely strand the user. With no room
+   * to cover, the drawer simply stays open.
+   */
+  const sidebarVisible = sidebarOpen || (sidebarIsDrawer && !room);
+
+  const sidebarDrawerOpen = sidebarIsDrawer && sidebarOpen;
+  const membersDrawerOpen = sidePanelIsDrawer && membersOpen;
+  const overlayUp = sidebarDrawerOpen || membersDrawerOpen || (sidePanelIsDrawer && threadOpen);
+
+  /**
+   * The open room lives in the URL, so a reload or a shared link lands back in
+   * it; and an open overlay owns a history entry, so the Android Back gesture
+   * closes the drawer instead of quitting the app mid-conversation.
+   */
+  useRoomUrl({
+    activeRoomId: chat.activeRoomId,
+    selectRoom: chat.selectRoom,
+    ready: !chat.loadingRooms,
+  });
+
+  useBackToClose(overlayUp, closeAll);
+
+  useDrawerFocus(sidebarDrawerOpen, sidebarRef);
+  useDrawerFocus(membersDrawerOpen, membersRef);
+
+  useEffect(() => {
+    if (!overlayUp) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") closeAll();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [overlayUp, closeAll]);
+
   return (
     <div className={styles.layout}>
-      <div className={cx(styles.sidebar, sidebarOpen && styles.open)}>
+      <div
+        ref={sidebarRef}
+        className={cx(styles.sidebar, sidebarVisible && styles.open)}
+        inert={(sidebarIsDrawer && !sidebarVisible) || undefined}
+      >
         <Sidebar
           myRooms={chat.myRooms}
           discoverRooms={chat.discoverRooms}
@@ -143,7 +249,9 @@ export default function Chat() {
         />
       </div>
 
-      <main className={styles.main}>
+      {/* While a drawer is over the conversation, the conversation is not reachable —
+          which is the focus trap the drawers were missing, for free. */}
+      <main className={styles.main} inert={overlayUp || undefined}>
         <ConnectionBanner visible={!isReady} />
 
         {!room ? (
@@ -187,7 +295,11 @@ export default function Chat() {
       )}
 
       {room?.isMember && (
-        <div className={cx(styles.members, membersOpen && styles.open)}>
+        <div
+          ref={membersRef}
+          className={cx(styles.members, membersOpen && styles.open)}
+          inert={(sidePanelIsDrawer && !membersOpen) || undefined}
+        >
           <MembersPanel room={room} onInvite={() => setInviting(true)} />
         </div>
       )}
