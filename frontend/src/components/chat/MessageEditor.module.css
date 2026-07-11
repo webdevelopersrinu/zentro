@@ -1,0 +1,45 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  /* Floor for usability, but never wider than the message column it sits in. */
+  min-width: min(320px, 100%);
+  max-width: 100%;
+}
+
+.input {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xl);
+  max-width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  field-sizing: content; /* grows with the text where supported */
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.hint,
+.error {
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.hint {
+  color: var(--text-faint);
+}
+
+.hint button {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.error {
+  color: var(--danger);
+}

@@ -17,7 +17,23 @@ export const create = asyncHandler(async (req, res) => {
 
 export const listMine = asyncHandler(async (req, res) => {
   const rooms = await roomService.listMyRooms(req.user.id);
-  res.json({ rooms: roomsFor(rooms, req.user.id) });
+  const unread = await roomService.unreadRoomIds(rooms, req.user.id);
+
+  res.json({
+    rooms: rooms.map((room) =>
+      toRoomDTO(room, req.user.id, { unread: unread.has(String(room._id)) })
+    ),
+  });
+});
+
+export const markRead = asyncHandler(async (req, res) => {
+  const lastReadAt = await roomService.markRead(req.room, req.user.id);
+  res.json({ ok: true, lastReadAt });
+});
+
+export const listReceipts = asyncHandler(async (req, res) => {
+  const receipts = await roomService.listReceipts(req.room, req.user.id);
+  res.json({ receipts, memberCount: req.room.members.length });
 });
 
 export const discover = asyncHandler(async (req, res) => {
@@ -62,6 +78,12 @@ export const invite = asyncHandler(async (req, res) => {
   res.json({ room: toRoomDTO(room, req.user.id) });
 });
 
+/** Accepting an invite is just joining, so there is no `accept` handler. */
+export const declineInvite = asyncHandler(async (req, res) => {
+  await roomService.declineInvite(req.room, req.user.id);
+  res.json({ ok: true });
+});
+
 export const leave = asyncHandler(async (req, res) => {
   await roomService.leaveRoom(req.room, req.user.id);
   res.json({ ok: true });
@@ -78,7 +100,36 @@ export const remove = asyncHandler(async (req, res) => {
 });
 
 export const listMessages = asyncHandler(async (req, res) => {
-  const messages = await roomService.listMessages(req.room, req.user.id);
+  const { before, limit } = req.validatedQuery;
+  const { messages, hasMore } = await roomService.listMessages(req.room, req.user.id, {
+    before,
+    limit,
+  });
+  res.json({ messages: messages.map(toMessageDTO), hasMore });
+});
+
+export const promoteAdmin = asyncHandler(async (req, res) => {
+  const room = await roomService.promoteToAdmin(req.room, req.user.id, req.params.userId);
+  res.json({ room: toRoomDTO(room, req.user.id) });
+});
+
+export const demoteAdmin = asyncHandler(async (req, res) => {
+  const room = await roomService.demoteAdmin(req.room, req.user.id, req.params.userId);
+  res.json({ room: toRoomDTO(room, req.user.id) });
+});
+
+export const listReplies = asyncHandler(async (req, res) => {
+  const { parent, replies } = await roomService.listReplies(
+    req.room,
+    req.user.id,
+    req.params.messageId
+  );
+  res.json({ parent: toMessageDTO(parent), replies: replies.map(toMessageDTO) });
+});
+
+export const searchMessages = asyncHandler(async (req, res) => {
+  const { q, limit } = req.validatedQuery;
+  const messages = await roomService.searchMessages(req.room, req.user.id, { q, limit });
   res.json({ messages: messages.map(toMessageDTO) });
 });
 

@@ -11,7 +11,16 @@ const MAX_ROWS = 6;
  * An empty draft disables the send button rather than showing an error: the
  * constraint is obvious, so it needs no words.
  */
-export function MessageComposer({ roomName, disabled, onSend, onKeystroke, onStopTyping }) {
+// Typing is broadcast per room, so the thread composer simply omits these two.
+const noop = () => {};
+
+export function MessageComposer({
+  roomName,
+  disabled,
+  onSend,
+  onKeystroke = noop,
+  onStopTyping = noop,
+}) {
   const [draft, setDraft] = useState("");
   const textareaRef = useRef(null);
 

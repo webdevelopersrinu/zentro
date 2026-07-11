@@ -57,6 +57,13 @@ export function AuthProvider({ children }) {
     endSession();
   }, [endSession]);
 
+  /** Email login already returned the tokens — no redirect, no refresh call. */
+  const completeLogin = useCallback(({ accessToken, user: me }) => {
+    setAccessToken(accessToken);
+    setUser(me);
+    setStatus(STATUS.AUTHENTICATED);
+  }, []);
+
   const value = useMemo(
     () => ({
       user,
@@ -64,9 +71,10 @@ export function AuthProvider({ children }) {
       isAuthenticated: status === STATUS.AUTHENTICATED,
       isLoading: status === STATUS.LOADING,
       login: authService.startLogin,
+      completeLogin,
       logout,
     }),
-    [user, status, logout]
+    [user, status, completeLogin, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

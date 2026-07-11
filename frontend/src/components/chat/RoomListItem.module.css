@@ -26,6 +26,12 @@
   font-weight: 600;
 }
 
+.actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
 .name {
   display: flex;
   align-items: center;

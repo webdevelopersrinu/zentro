@@ -4,6 +4,7 @@ import { Globe, Lock, Zap } from "lucide-react";
 import { Button } from "../components/ui/Button.jsx";
 import { Logo } from "../components/ui/Logo.jsx";
 import { GoogleIcon, GithubIcon } from "../components/ui/BrandIcons.jsx";
+import { EmailLogin } from "../components/auth/EmailLogin.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import styles from "./Login.module.css";
@@ -58,6 +59,12 @@ export default function Login() {
             Continue with GitHub
           </Button>
         </div>
+
+        <div className={styles.divider}>
+          <span>or</span>
+        </div>
+
+        <EmailLogin />
 
         <ul className={styles.features}>
           {FEATURES.map(({ icon: Icon, title, body }) => (

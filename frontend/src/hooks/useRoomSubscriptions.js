@@ -14,6 +14,11 @@ import { useSocket } from "../context/SocketContext.jsx";
  *
  * The joined set is cleared on disconnect: a reconnected socket is a new socket
  * on the server and has joined nothing.
+ *
+ * A room is marked BEFORE its ack arrives. Marking it on the ack instead leaves
+ * a window in which the room list refetches, the effect re-runs, and the same
+ * room:join is emitted again — every unread dot and every refetch reopens it.
+ * A failed join is unmarked, so the next render retries.
  */
 export function useRoomSubscriptions(rooms) {
   const { socketRef, isReady } = useSocket();
@@ -31,8 +36,10 @@ export function useRoomSubscriptions(rooms) {
     rooms
       .filter((room) => room.isMember && !joined.current.has(room.id))
       .forEach((room) => {
+        joined.current.add(room.id);
+
         socket.emit(SOCKET_EVENTS.ROOM_JOIN, room.id, (ack) => {
-          if (ack?.ok) joined.current.add(room.id);
+          if (!ack?.ok) joined.current.delete(room.id);
         });
       });
   }, [rooms, isReady, socketRef]);

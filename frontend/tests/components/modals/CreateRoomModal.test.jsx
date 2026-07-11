@@ -1,18 +1,8 @@
-import { describe, expect, it, vi, beforeAll } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CreateRoomModal } from "../../../src/components/modals/CreateRoomModal.jsx";
-
-// jsdom ships <dialog> without showModal/close.
-beforeAll(() => {
-  HTMLDialogElement.prototype.showModal = vi.fn(function () {
-    this.open = true;
-  });
-  HTMLDialogElement.prototype.close = vi.fn(function () {
-    this.open = false;
-  });
-});
 
 const setup = (props = {}) => {
   const onCreate = vi.fn();

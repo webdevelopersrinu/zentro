@@ -1,0 +1,39 @@
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: 2px var(--space-2) 0;
+  list-style: none;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: var(--accent);
+}
+
+/* Mine reads at a glance, without relying on colour alone: aria-pressed too. */
+.mine {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.count {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.mine .count {
+  color: var(--accent);
+}

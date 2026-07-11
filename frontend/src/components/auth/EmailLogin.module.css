@@ -1,0 +1,12 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.code input {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  letter-spacing: 0.4em;
+  text-align: center;
+}

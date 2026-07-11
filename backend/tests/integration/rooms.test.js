@@ -178,17 +178,98 @@ describe("Rooms API", () => {
   });
 
   describe("Invites", () => {
-    it("lets the creator add a user directly by username", async () => {
-      const room = await createRoom(owner.client, PRIVATE);
-
-      const res = await owner.client.post(`/api/rooms/${room.id}/invite`, {
+    const inviteOutsider = (room) =>
+      owner.client.post(`/api/rooms/${room.id}/invite`, {
         username: outsider.user.username,
       });
+
+    // An invite is an OFFER. Nobody joins a room without their own consent.
+    it("does not make the invitee a member until they accept", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+
+      const res = await inviteOutsider(room);
       expect(res.status).toBe(200);
-      expect(res.body.room.memberCount).toBe(2);
+      expect(res.body.room.memberCount).toBe(1);
+
+      const read = await outsider.client.get(`/api/rooms/${room.id}/messages`);
+      expect(read.status).toBe(403);
+    });
+
+    it("flags the pending invite on the room the invitee sees", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+      await inviteOutsider(room);
+
+      const { body } = await outsider.client.get("/api/rooms/discover");
+
+      expect(body.rooms.find((r) => r.id === room.id)).toMatchObject({
+        isInvited: true,
+        isMember: false,
+      });
+    });
+
+    // Accepting an invite IS joining — the invite is a pre-approved join.
+    it("admits the invitee on accept, even to a private room", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+      await inviteOutsider(room);
+
+      const accept = await outsider.client.post(`/api/rooms/${room.id}/join`);
+      expect(accept.body).toMatchObject({ joined: true });
 
       const read = await outsider.client.get(`/api/rooms/${room.id}/messages`);
       expect(read.status).toBe(200);
+    });
+
+    it("lets the invitee decline, leaving them outside", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+      await inviteOutsider(room);
+
+      const res = await outsider.client.post(`/api/rooms/${room.id}/invite/decline`);
+      expect(res.status).toBe(200);
+
+      const { body } = await outsider.client.get("/api/rooms/discover");
+      expect(body.rooms.find((r) => r.id === room.id).isInvited).toBe(false);
+
+      const read = await outsider.client.get(`/api/rooms/${room.id}/messages`);
+      expect(read.status).toBe(403);
+    });
+
+    it("404s when declining an invite that was never made", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+      const res = await outsider.client.post(`/api/rooms/${room.id}/invite/decline`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it("does not queue a duplicate invite", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+      await inviteOutsider(room);
+      await inviteOutsider(room);
+
+      await outsider.client.post(`/api/rooms/${room.id}/invite/decline`);
+
+      // A single decline must clear it; a duplicate would still be pending.
+      const { body } = await outsider.client.get("/api/rooms/discover");
+      expect(body.rooms.find((r) => r.id === room.id).isInvited).toBe(false);
+    });
+
+    // Both sides said yes, so there is nothing left to decide.
+    it("admits immediately when the invitee had already requested to join", async () => {
+      const room = await createRoom(owner.client, PRIVATE);
+      await outsider.client.post(`/api/rooms/${room.id}/join`); // request
+
+      const res = await inviteOutsider(room);
+
+      expect(res.body.room).toMatchObject({ memberCount: 2, requestCount: 0 });
+      const read = await outsider.client.get(`/api/rooms/${room.id}/messages`);
+      expect(read.status).toBe(200);
+    });
+
+    it("rejects inviting someone who is already a member", async () => {
+      const room = await createRoom(owner.client, PUBLIC);
+      await outsider.client.post(`/api/rooms/${room.id}/join`);
+
+      const res = await inviteOutsider(room);
+      expect(res.status).toBe(400);
     });
 
     it("forbids non-creators from inviting", async () => {

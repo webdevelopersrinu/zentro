@@ -24,11 +24,13 @@ export const signAccessToken = (user) =>
       avatarUrl: user.avatarUrl || "",
     },
     process.env.JWT_SECRET,
-    { expiresIn: TOKEN.ACCESS_TTL }
+    { expiresIn: TOKEN.ACCESS_TTL, algorithm: "HS256" }
   );
 
+// Pin the algorithm on verify: never let a token's own `alg` header choose how
+// it is checked. Defence in depth against algorithm-confusion forgery.
 export const verifyAccessToken = (token) =>
-  jwt.verify(token, process.env.JWT_SECRET);
+  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
 
 // ── refresh token (opaque, long-lived, server-side, revocable) ─────────────
 

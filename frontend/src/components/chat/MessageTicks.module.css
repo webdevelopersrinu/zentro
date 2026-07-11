@@ -1,0 +1,13 @@
+.ticks {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
+}
+
+/*
+ * The one moment worth colouring: everyone has seen it. Brand accent rather
+ * than WhatsApp's blue — same signal, this app's palette.
+ */
+.readByAll {
+  color: var(--accent);
+}

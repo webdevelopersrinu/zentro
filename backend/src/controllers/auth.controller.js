@@ -1,6 +1,7 @@
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import * as tokenService from "../services/token.service.js";
 import * as userService from "../services/user.service.js";
+import * as emailAuth from "../services/emailAuth.service.js";
 import { toUserDTO } from "../utils/serializers.js";
 import { AppError } from "../utils/AppError.js";
 import { TOKEN, HTTP_STATUS } from "../constants/index.js";
@@ -35,6 +36,29 @@ export const oauthSuccess = asyncHandler(async (req, res) => {
 
 export const oauthFailure = (_req, res) =>
   res.redirect(`${clientUrl()}/?error=auth_failed`);
+
+/**
+ * Always answers 200, whether or not the address is registered. Reporting
+ * "no such user" would turn this endpoint into a way to enumerate accounts.
+ */
+export const emailRequest = asyncHandler(async (req, res) => {
+  await emailAuth.requestCode(req.body.email);
+  res.json({ ok: true });
+});
+
+/** Same tokens, same cookie, same rotation as an OAuth login. */
+export const emailVerify = asyncHandler(async (req, res) => {
+  const { email, code } = req.body;
+  const user = await emailAuth.verifyCode(email, code);
+
+  const refreshToken = await tokenService.issueRefreshToken(user._id, auditMeta(req));
+  setRefreshCookie(res, refreshToken);
+
+  res.json({
+    accessToken: tokenService.signAccessToken(user),
+    user: toUserDTO(user),
+  });
+});
 
 /**
  * Exchange the refresh cookie for a fresh access token, rotating the refresh

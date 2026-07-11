@@ -74,3 +74,18 @@
   font-size: var(--text-sm);
   font-weight: 600;
 }
+
+/* Tablet: still in flow, but it may not eat the conversation's width. */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .sidebar {
+    width: 240px;
+  }
+}
+
+/* Phone: a full-screen drawer, so it needs its own opaque background. */
+@media (max-width: 767px) {
+  .sidebar {
+    width: 100%;
+    background: var(--surface-solid);
+  }
+}

@@ -2,6 +2,8 @@ import { Hash, Lock, Crown, Users, Menu } from "lucide-react";
 
 import { Badge } from "../ui/Badge.jsx";
 import { IconButton } from "../ui/IconButton.jsx";
+import { MessageSearch } from "./MessageSearch.jsx";
+import { RoomExitAction } from "./RoomExitAction.jsx";
 import { ROOM_VISIBILITY } from "../../config/index.js";
 import styles from "./ChatHeader.module.css";
 
@@ -34,9 +36,13 @@ export function ChatHeader({ room, onToggleMembers, onToggleSidebar }) {
         {room.memberCount} {room.memberCount === 1 ? "member" : "members"}
       </span>
 
-      <IconButton label="Show members" className={styles.members} onClick={onToggleMembers}>
+      <MessageSearch room={room} />
+
+      <IconButton label="Show members" onClick={onToggleMembers}>
         <Users size={18} />
       </IconButton>
+
+      <RoomExitAction room={room} />
     </header>
   );
 }

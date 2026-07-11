@@ -14,8 +14,16 @@ import { AppError } from "../utils/AppError.js";
 export const sameOriginOnly = (req, _res, next) => {
   const allowed = process.env.CLIENT_ORIGIN;
 
-  // Wildcard origin means dev with CORS wide open; nothing to enforce.
-  if (!allowed || allowed === "*") return next();
+  // Missing or wildcard origin. Outside production this is dev with CORS wide
+  // open — nothing to enforce. In production it means the deploy is
+  // misconfigured, so fail CLOSED instead of waving the request through. (env
+  // validation already refuses to boot in this state; this is the backstop.)
+  if (!allowed || allowed === "*") {
+    if (process.env.NODE_ENV === "production") {
+      return next(AppError.forbidden("Cross-origin request rejected"));
+    }
+    return next();
+  }
 
   const origin = req.get("origin");
   // Same-origin requests from some browsers omit Origin on GET; these routes

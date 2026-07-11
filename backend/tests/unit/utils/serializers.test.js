@@ -64,7 +64,35 @@ describe("toMessageDTO", () => {
       username: "alice",
       text: "hi",
       createdAt,
+      editedAt: null,
+      deleted: false,
+      reactions: [],
+      parentId: null,
+      replyCount: 0,
     });
+  });
+
+  it("reports a reply's parent, so the client keeps it out of the main list", () => {
+    const dto = toMessageDTO({ _id: "m", room: "r", parent: { _id: "p1" }, replyCount: 0 });
+
+    expect(dto).toMatchObject({ parentId: "p1" });
+  });
+
+  it("sends who reacted, not whether the viewer did — one broadcast, many viewers", () => {
+    const dto = toMessageDTO({
+      _id: "m",
+      room: "r",
+      reactions: [{ emoji: "👍", users: [{ _id: "u1" }, "u2"] }],
+    });
+
+    expect(dto.reactions).toEqual([{ emoji: "👍", users: ["u1", "u2"] }]);
+  });
+
+  it("reports an edit, and a deletion, as flags the client can render", () => {
+    const editedAt = new Date("2026-01-01T00:05:00Z");
+    const dto = toMessageDTO({ _id: "m", room: "r", text: "", editedAt, deletedAt: new Date() });
+
+    expect(dto).toMatchObject({ editedAt, deleted: true });
   });
 
   it("never leaks the sender's user id", () => {

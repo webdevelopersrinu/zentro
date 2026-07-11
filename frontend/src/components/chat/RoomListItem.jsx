@@ -24,6 +24,7 @@ export const RoomListItem = memo(function RoomListItem({
   joining,
   onSelect,
   onJoin,
+  onDecline,
 }) {
   const isPrivate = room.visibility === ROOM_VISIBILITY.PRIVATE;
   const Icon = isPrivate ? Lock : Hash;
@@ -35,15 +36,28 @@ export const RoomListItem = memo(function RoomListItem({
           <Icon size={15} aria-hidden="true" />
           {room.name}
         </span>
-        <Button
-          size="sm"
-          variant={room.hasRequested ? "ghost" : "secondary"}
-          loading={joining}
-          disabled={room.hasRequested}
-          onClick={() => onJoin(room)}
-        >
-          {room.hasRequested ? "Requested ✓" : isPrivate ? "Request" : "Join"}
-        </Button>
+
+        {/* An invite is the creator's offer: the user decides, and can say no. */}
+        {room.isInvited ? (
+          <span className={styles.actions}>
+            <Button size="sm" loading={joining} onClick={() => onJoin(room)}>
+              Accept
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onDecline(room)}>
+              Decline
+            </Button>
+          </span>
+        ) : (
+          <Button
+            size="sm"
+            variant={room.hasRequested ? "ghost" : "secondary"}
+            loading={joining}
+            disabled={room.hasRequested}
+            onClick={() => onJoin(room)}
+          >
+            {room.hasRequested ? "Requested ✓" : isPrivate ? "Request" : "Join"}
+          </Button>
+        )}
       </li>
     );
   }
@@ -61,7 +75,7 @@ export const RoomListItem = memo(function RoomListItem({
           {room.name}
         </span>
 
-        {room.isCreator && room.requestCount > 0 ? (
+        {room.isAdmin && room.requestCount > 0 ? (
           <Badge tone="warning" aria-label={`${room.requestCount} pending requests`}>
             {room.requestCount}
           </Badge>

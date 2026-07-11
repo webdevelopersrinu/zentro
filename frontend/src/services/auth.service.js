@@ -20,6 +20,13 @@ export const refreshSession = () => requestRefresh();
 
 export const getMe = () => api.get("/auth/me").then(({ data }) => data.user);
 
+/** Always resolves, even for an unknown address — the server reveals nothing. */
+export const requestEmailCode = (email) => api.post("/auth/email/request", { email });
+
+/** Returns { accessToken, user }, exactly like /auth/refresh. */
+export const verifyEmailCode = (email, code) =>
+  api.post("/auth/email/verify", { email, code }).then(({ data }) => data);
+
 /** Revokes the whole token family server-side, then drops the in-memory token. */
 export async function logout() {
   try {

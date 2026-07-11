@@ -2,7 +2,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import { useSendMessage } from "../../src/hooks/useMessages.js";
+import { useSendMessage, useLoadOlderMessages } from "../../src/hooks/useMessages.js";
+import * as roomService from "../../src/services/room.service.js";
 import { queryKeys } from "../../src/lib/queryKeys.js";
 
 const ROOM = "r1";
@@ -15,12 +16,17 @@ vi.mock("../../src/hooks/useSocketEvent.js", () => ({
   useSocketEvent: vi.fn(),
 }));
 
+// The hook is the unit here; the axios layer has its own tests.
+vi.mock("../../src/services/room.service.js", () => ({ listMessages: vi.fn() }));
+
 let queryClient;
 const wrapper = ({ children }) => (
   <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 );
 
-const messages = () => queryClient.getQueryData(queryKeys.messages(ROOM)) ?? [];
+const page = () => queryClient.getQueryData(queryKeys.messages(ROOM));
+const messages = () => page()?.messages ?? [];
+const seed = (data) => queryClient.setQueryData(queryKeys.messages(ROOM), data);
 
 const renderSend = () =>
   renderHook(() => useSendMessage(ROOM, AUTHOR), { wrapper }).result;
@@ -57,7 +63,7 @@ describe("useSendMessage — optimistic send", () => {
   it("drops the placeholder when the broadcast wins the race — never doubles", async () => {
     emit = vi.fn(async () => {
       // The socket broadcast lands before the ack resolves.
-      queryClient.setQueryData(queryKeys.messages(ROOM), (list = []) => [...list, real]);
+      seed({ hasMore: false, messages: [...messages(), real] });
       return { ok: true, message: real };
     });
     const { current: send } = renderSend();
@@ -84,5 +90,93 @@ describe("useSendMessage — optimistic send", () => {
     await act(async () => void (await send("hi")));
 
     expect(messages()[0].status).toBe("failed");
+  });
+});
+
+describe("useLoadOlderMessages", () => {
+  const message = (id) => ({ id, roomId: ROOM, username: "alice", text: id, createdAt: "2026-01-01T00:00:00Z" });
+
+  const renderLoadOlder = () => renderHook(() => useLoadOlderMessages(ROOM), { wrapper }).result;
+
+  beforeEach(() => {
+    roomService.listMessages.mockReset();
+  });
+
+  it("prepends the older page and carries its hasMore forward", async () => {
+    roomService.listMessages.mockResolvedValue({
+      messages: [message("m1"), message("m2")],
+      hasMore: false,
+    });
+    seed({ hasMore: true, messages: [message("m3")] });
+    const result = renderLoadOlder();
+
+    await act(async () => void (await result.current.loadOlder()));
+
+    expect(messages().map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+    expect(page().hasMore).toBe(false);
+  });
+
+  it("asks for the page before the OLDEST message it holds", async () => {
+    const spy = roomService.listMessages.mockResolvedValue({ messages: [], hasMore: false });
+    seed({ hasMore: true, messages: [message("m5"), message("m6")] });
+    const result = renderLoadOlder();
+
+    await act(async () => void (await result.current.loadOlder()));
+
+    expect(spy).toHaveBeenCalledWith(ROOM, { before: "m5" });
+  });
+
+  it("does nothing when there is no more history", async () => {
+    const spy = roomService.listMessages;
+    seed({ hasMore: false, messages: [message("m1")] });
+    const result = renderLoadOlder();
+
+    await act(async () => void (await result.current.loadOlder()));
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("does nothing before the first page has loaded", async () => {
+    const spy = roomService.listMessages;
+    const result = renderLoadOlder();
+
+    await act(async () => void (await result.current.loadOlder()));
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("fetches once even though scrolling calls it repeatedly", async () => {
+    let release;
+    const spy = roomService.listMessages.mockImplementation(
+      () => new Promise((resolve) => (release = resolve))
+    );
+    seed({ hasMore: true, messages: [message("m3")] });
+    const result = renderLoadOlder();
+
+    act(() => {
+      result.current.loadOlder();
+      result.current.loadOlder();
+      result.current.loadOlder();
+    });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    await act(async () => release({ messages: [message("m2")], hasMore: false }));
+    expect(messages().map((m) => m.id)).toEqual(["m2", "m3"]);
+  });
+
+  it("clears the in-flight guard when the request fails, so a retry is possible", async () => {
+    const spy = roomService.listMessages.mockRejectedValue(new Error("offline"));
+    seed({ hasMore: true, messages: [message("m3")] });
+    const result = renderLoadOlder();
+
+    await act(async () => {
+      await expect(result.current.loadOlder()).rejects.toThrow("offline");
+    });
+
+    spy.mockResolvedValue({ messages: [message("m2")], hasMore: false });
+    await act(async () => void (await result.current.loadOlder()));
+
+    expect(messages().map((m) => m.id)).toEqual(["m2", "m3"]);
   });
 });

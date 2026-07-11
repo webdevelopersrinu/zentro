@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useMyRooms, useDiscoverRooms, useJoinRoom } from "./useRooms.js";
+import {
+  useMyRooms,
+  useDiscoverRooms,
+  useJoinRoom,
+  useDeclineInvite,
+  useMarkRoomRead,
+} from "./useRooms.js";
 import { useRealtimeSync } from "./useRealtimeSync.js";
 import { useRoomSubscriptions } from "./useRoomSubscriptions.js";
 import { useToast } from "../context/ToastContext.jsx";
@@ -13,6 +19,8 @@ export function useChatState() {
   const { data: myRooms = [], isLoading: loadingRooms } = useMyRooms();
   const { data: discoverRooms = [] } = useDiscoverRooms();
   const join = useJoinRoom();
+  const decline = useDeclineInvite();
+  const markRead = useMarkRoomRead();
   const { toast } = useToast();
 
   const [activeRoomId, setActiveRoomId] = useState(null);
@@ -22,21 +30,48 @@ export function useChatState() {
     setUnreadRoomIds((current) => new Set(current).add(roomId));
   }, []);
 
-  useRealtimeSync({ activeRoomId, onUnread: markUnread });
+  const markReadOnServer = markRead.mutate;
+
+  /**
+   * The server says what was unread when the tab was last closed; the socket
+   * adds to that while it is open. Two rules keep the two from fighting:
+   *
+   * Only ever a union — never clear a dot because the server has not caught up.
+   * And never the open room — a refetch racing the /read we just sent would
+   * otherwise put a dot on the very room being read.
+   */
+  useEffect(() => {
+    const unread = myRooms
+      .filter((room) => room.unread && room.id !== activeRoomId)
+      .map((room) => room.id);
+    if (!unread.length) return;
+
+    setUnreadRoomIds((current) => {
+      const missing = unread.filter((id) => !current.has(id));
+      return missing.length ? new Set([...current, ...missing]) : current;
+    });
+  }, [myRooms, activeRoomId]);
+
+  useRealtimeSync({ activeRoomId, onUnread: markUnread, onRead: markReadOnServer });
 
   // Subscribe the socket to every room we belong to — including rooms created
   // or joined after the socket connected, which the server cannot auto-join.
   useRoomSubscriptions(myRooms);
 
-  const selectRoom = useCallback((roomId) => {
-    setActiveRoomId(roomId);
-    setUnreadRoomIds((current) => {
-      if (!current.has(roomId)) return current;
-      const next = new Set(current);
-      next.delete(roomId);
-      return next;
-    });
-  }, []);
+  const selectRoom = useCallback(
+    (roomId) => {
+      setActiveRoomId(roomId);
+      markReadOnServer(roomId);
+
+      setUnreadRoomIds((current) => {
+        if (!current.has(roomId)) return current;
+        const next = new Set(current);
+        next.delete(roomId);
+        return next;
+      });
+    },
+    [markReadOnServer]
+  );
 
   /** Public rooms admit you instantly; private ones only record a request. */
   const joinRoom = useCallback(
@@ -45,14 +80,23 @@ export function useChatState() {
         onSuccess: (result) => {
           if (result.joined) {
             toast(`Joined #${room.name}`, { variant: "success" });
-            setActiveRoomId(room.id);
+            selectRoom(room.id); // opening it is reading it — a joined room has history
           } else {
             toast(`Request sent to the creator of #${room.name}`);
           }
         },
         onError: (error) => toast(error.message, { variant: "error" }),
       }),
-    [join, toast]
+    [join, toast, selectRoom]
+  );
+
+  const declineInvite = useCallback(
+    (room) =>
+      decline.mutate(room.id, {
+        onSuccess: () => toast(`Declined the invite to #${room.name}`),
+        onError: (error) => toast(error.message, { variant: "error" }),
+      }),
+    [decline, toast]
   );
 
   const activeRoom = useMemo(
@@ -78,5 +122,6 @@ export function useChatState() {
     joiningRoomId: join.isPending ? join.variables : null,
     selectRoom,
     joinRoom,
+    declineInvite,
   };
 }

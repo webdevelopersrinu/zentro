@@ -1,12 +1,16 @@
+/* The global reset (`* { margin: 0 }`) kills the UA's `dialog { margin: auto }`,
+   which is the only thing that centers a showModal() dialog. Restore it here. */
 .dialog {
+  margin: auto;
   width: min(440px, calc(100vw - 2 * var(--space-5)));
+  max-height: calc(100dvh - 2 * var(--space-5));
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-2xl);
   background: var(--surface-raised);
   color: var(--text);
   box-shadow: var(--shadow-lg);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .dialog::backdrop {
@@ -14,11 +18,23 @@
   backdrop-filter: blur(6px);
 }
 
+/* Scoped to [open] so it can't override the UA's `display: none` when closed. */
 .dialog[open] {
-  animation: fade-in-up var(--duration-base) var(--ease-out);
+  display: flex;
+  flex-direction: column;
+  animation: modal-in var(--duration-base) var(--ease-out);
+}
+
+/* fade-in-up translates on Y, which visibly fights the centered rest position. */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 
 .header {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -30,11 +46,16 @@
   font-size: var(--text-lg);
 }
 
+/* Only the body scrolls; header and footer (with its actions) stay reachable. */
 .body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 0 var(--space-5) var(--space-5);
 }
 
 .footer {
+  flex: none;
   display: flex;
   justify-content: flex-end;
   gap: var(--space-3);

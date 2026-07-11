@@ -206,6 +206,35 @@ test.describe("Cross-server sync via Valkey", () => {
     expect(leaked).toBe(false);
   });
 
+  test("a read on server B turns the author's tick marks on server A", async () => {
+    const room = await sharedRoom("receipts");
+    const aliceOnA = await track(E2E.SERVER_A, users.alice.accessToken);
+    await emitAck(aliceOnA, "message:send", { roomId: room.id, text: "did you see this?" });
+
+    const seen = waitFor(aliceOnA, "room:read");
+    const apiB = await request.newContext({ baseURL: E2E.SERVER_B });
+    const res = await apiB.post(`/api/rooms/${room.id}/read`, {
+      headers: bearer(users.bob.accessToken),
+    });
+    expect(res.status()).toBe(200);
+
+    expect(await seen).toMatchObject({ roomId: room.id, userId: users.bob.id });
+    await apiB.dispose();
+  });
+
+  test("deleting a room on A reaches its members on B, leaving no ghost room", async () => {
+    const room = await sharedRoom("doomed");
+    const bobOnB = await track(E2E.SERVER_B, users.bob.accessToken);
+
+    const deleted = waitFor(bobOnB, "room:deleted");
+    const res = await api.delete(`/api/rooms/${room.id}`, {
+      headers: bearer(users.alice.accessToken),
+    });
+    expect(res.status()).toBe(200);
+
+    expect(await deleted).toMatchObject({ roomId: room.id, name: "doomed" });
+  });
+
   test("message history written on A is readable from B", async () => {
     const room = await sharedRoom("shared-history");
     const aliceOnA = await track(E2E.SERVER_A, users.alice.accessToken);

@@ -1,0 +1,60 @@
+/*
+ * Hidden until the bubble is hovered or focused — MessageBubble.module.css owns
+ * that rule, since it owns the hover target. It reaches in through the
+ * [data-message-actions] attribute, because CSS Modules hash class names and a
+ * selector cannot cross from one module to another.
+ */
+.wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Hover devices reach the actions directly; the disclosure is dead weight there. */
+.more {
+  display: none;
+}
+
+/*
+ * Coarse pointer: no hover, and four 30px targets next to Delete are a misfire
+ * waiting to happen. Collapse them behind one trigger, and float the revealed row
+ * above the bubble so it never has to compete with the message for width.
+ */
+@media (pointer: coarse) {
+  .wrap {
+    opacity: 1;
+  }
+
+  .more {
+    display: grid;
+  }
+
+  .actions {
+    position: absolute;
+    bottom: calc(100% + var(--space-1));
+    left: 0;
+    z-index: 1;
+    display: none;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* :has(:focus-visible), not :focus-within — a tap focuses the trigger too, and
+     that would pin the row open against the second tap that should close it. */
+  .wrap[data-open] .actions,
+  .wrap:has(:focus-visible) .actions {
+    display: flex;
+  }
+}

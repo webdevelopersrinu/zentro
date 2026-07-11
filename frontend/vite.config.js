@@ -27,6 +27,13 @@ export default defineConfig({
     globals: true,
 
     /**
+     * jsdom plus user-event is slow, and the files run in parallel workers. The
+     * 5s default is enough on an idle machine and not on a busy one, which shows
+     * up as a test that fails only in a full run. Time is not what is under test.
+     */
+    testTimeout: 15_000,
+
+    /**
      * Tests are centralised in tests/, mirroring src/, so the layout matches the
      * backend (tests/unit, tests/integration, e2e). src/ contains only source.
      */

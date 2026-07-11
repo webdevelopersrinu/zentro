@@ -76,14 +76,18 @@
   color: var(--text);
 }
 
+/* Irreversible actions are the solid button in their dialog — never the quieter
+   one next to Cancel. `--bg` as the label keeps contrast in both themes, where
+   `--danger` flips from a light red to a dark one. */
 .danger {
-  background: transparent;
-  color: var(--danger);
-  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  background: var(--danger);
+  color: var(--bg);
+  border: 1px solid var(--danger);
 }
 
 .danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  background: color-mix(in srgb, var(--danger) 85%, black);
+  border-color: color-mix(in srgb, var(--danger) 85%, black);
 }
 
 .spinner {

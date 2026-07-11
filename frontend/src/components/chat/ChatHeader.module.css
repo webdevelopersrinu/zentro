@@ -34,18 +34,19 @@
   color: var(--text-muted);
 }
 
-/* Drawer triggers: hidden on desktop, where both panels are always visible. */
-.menu,
-.members {
+/* The members panel is a toggle at every width — opening a thread closes it. */
+.menu {
   display: none;
 }
 
 @media (max-width: 1199px) {
-  .members {
-    display: grid;
+  .header {
+    padding: 0 var(--space-4);
+    gap: var(--space-2);
   }
 }
 
+/* Phone: only the essentials fit next to the room name. */
 @media (max-width: 767px) {
   .menu {
     display: grid;

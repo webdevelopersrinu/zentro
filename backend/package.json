@@ -1,5 +1,5 @@
 {
-  "name": "chat-backend",
+  "name": "zentro-app-backend",
   "version": "1.0.0",
   "description": "Real-time chat backend (Express + Socket.IO + Valkey adapter + MongoDB)",
   "type": "module",
@@ -33,6 +33,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.5.1",
     "morgan": "^1.11.0",
+    "nodemailer": "^9.0.3",
     "passport": "^0.7.0",
     "passport-github2": "^0.1.12",
     "passport-google-oauth20": "^2.0.0",

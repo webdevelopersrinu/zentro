@@ -23,6 +23,7 @@ export function Sidebar({
   joiningRoomId,
   onSelectRoom,
   onJoinRoom,
+  onDeclineInvite,
   onCreateRoom,
 }) {
   const { user, logout } = useAuth();
@@ -44,6 +45,7 @@ export function Sidebar({
         joining={joiningRoomId === room.id}
         onSelect={onSelectRoom}
         onJoin={onJoinRoom}
+        onDecline={onDeclineInvite}
       />
     ));
 

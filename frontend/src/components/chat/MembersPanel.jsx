@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Check, Crown, UserPlus, X } from "lucide-react";
+import { Check, Crown, Shield, ShieldOff, UserPlus, X } from "lucide-react";
 
 import { Avatar } from "../ui/Avatar.jsx";
 import { Badge } from "../ui/Badge.jsx";
@@ -7,11 +7,23 @@ import { Button } from "../ui/Button.jsx";
 import { IconButton } from "../ui/IconButton.jsx";
 import { PresenceDot } from "../ui/PresenceDot.jsx";
 import { SkeletonList } from "../ui/Skeleton.jsx";
-import { useMembers, useRequests, useApproveRequest, useRejectRequest } from "../../hooks/useMembers.js";
+import {
+  useMembers,
+  useRequests,
+  useApproveRequest,
+  useRejectRequest,
+  usePromoteAdmin,
+  useDemoteAdmin,
+} from "../../hooks/useMembers.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import styles from "./MembersPanel.module.css";
 
-const MemberRow = memo(function MemberRow({ member, isYou }) {
+/**
+ * `canManage` is the creator's, not an admin's: an admin who could promote
+ * another would let a room's moderation escape the person who owns it. The
+ * creator's own row offers nothing — they cannot be demoted.
+ */
+const MemberRow = memo(function MemberRow({ member, isYou, canManage, onPromote, onDemote }) {
   return (
     <li className={styles.row}>
       <Avatar src={member.avatarUrl} name={member.name} size={30} />
@@ -19,7 +31,25 @@ const MemberRow = memo(function MemberRow({ member, isYou }) {
         {member.name}
         {isYou && <span className={styles.you}>(you)</span>}
       </span>
-      {member.isCreator && <Crown size={13} className={styles.crown} aria-label="Creator" />}
+
+      {member.isCreator ? (
+        <Crown size={13} className={styles.crown} aria-label="Creator" />
+      ) : (
+        member.isAdmin && <Shield size={13} className={styles.shield} aria-label="Admin" />
+      )}
+
+      {canManage &&
+        !member.isCreator &&
+        (member.isAdmin ? (
+          <IconButton label={`Remove ${member.name} as admin`} size="sm" onClick={onDemote}>
+            <ShieldOff size={15} />
+          </IconButton>
+        ) : (
+          <IconButton label={`Make ${member.name} an admin`} size="sm" onClick={onPromote}>
+            <Shield size={15} />
+          </IconButton>
+        ))}
+
       <PresenceDot online={member.online} />
     </li>
   );
@@ -43,10 +73,12 @@ function RequestRow({ request, onApprove, onReject }) {
 export function MembersPanel({ room, onInvite }) {
   const { user } = useAuth();
   const { data: members = [], isLoading } = useMembers(room.id);
-  const { data: requests = [] } = useRequests(room.id, { enabled: room.isCreator });
+  const { data: requests = [] } = useRequests(room.id, { enabled: room.isAdmin });
 
   const approve = useApproveRequest(room.id);
   const reject = useRejectRequest(room.id);
+  const promote = usePromoteAdmin(room.id);
+  const demote = useDemoteAdmin(room.id);
 
   return (
     <aside className={styles.panel} aria-label="Members">
@@ -59,13 +91,20 @@ export function MembersPanel({ room, onInvite }) {
         ) : (
           <ul className={styles.list}>
             {members.map((member) => (
-              <MemberRow key={member.id} member={member} isYou={member.id === user.id} />
+              <MemberRow
+                key={member.id}
+                member={member}
+                isYou={member.id === user.id}
+                canManage={room.isCreator}
+                onPromote={() => promote.mutate(member.id)}
+                onDemote={() => demote.mutate(member.id)}
+              />
             ))}
           </ul>
         )}
       </section>
 
-      {room.isCreator && requests.length > 0 && (
+      {room.isAdmin && requests.length > 0 && (
         <section className={styles.section}>
           <h2 className={styles.heading}>
             Requests <Badge tone="warning">{requests.length}</Badge>
@@ -83,7 +122,7 @@ export function MembersPanel({ room, onInvite }) {
         </section>
       )}
 
-      {room.isCreator && (
+      {room.isAdmin && (
         <div className={styles.invite}>
           <Button variant="secondary" fullWidth startIcon={<UserPlus size={16} />} onClick={onInvite}>
             Invite people

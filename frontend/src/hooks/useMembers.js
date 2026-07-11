@@ -11,7 +11,7 @@ export function useMembers(roomId, { enabled = true } = {}) {
   });
 }
 
-/** Creator-only. The server rejects anyone else, so we simply do not render it. */
+/** Admins only. The server rejects anyone else, so we simply do not render it. */
 export function useRequests(roomId, { enabled = false } = {}) {
   return useQuery({
     queryKey: queryKeys.requests(roomId),
@@ -55,6 +55,24 @@ export const useApproveRequest = (roomId) =>
 
 export const useRejectRequest = (roomId) =>
   useRequestDecision(roomId, roomService.rejectRequest);
+
+/**
+ * Granting and revoking moderation is the creator's alone. Both refresh the
+ * roster and the room lists: `isAdmin` appears in each.
+ */
+function useAdminChange(roomId, change) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId) => change(roomId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.members(roomId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rooms });
+    },
+  });
+}
+
+export const usePromoteAdmin = (roomId) => useAdminChange(roomId, roomService.promoteAdmin);
+export const useDemoteAdmin = (roomId) => useAdminChange(roomId, roomService.demoteAdmin);
 
 export function useInviteUser(roomId) {
   const queryClient = useQueryClient();

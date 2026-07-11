@@ -1,3 +1,10 @@
+/**
+ * Three tiers, one rule each:
+ *   phone  (<768)      sidebar + thread + members are full-screen overlays
+ *   tablet (768–1199)  sidebar in flow; thread + members are right-edge drawers
+ *   laptop (>=1200)    sidebar + conversation + ONE side panel in flow
+ *   wide   (>=1600)    both side panels may sit in flow (Chat.jsx enforces this)
+ */
 .layout {
   display: flex;
   height: 100dvh; /* dvh, so the iOS keyboard cannot cover the composer */
@@ -12,36 +19,52 @@
 }
 
 .sidebar,
-.members {
+.members,
+.thread {
   display: flex;
+  flex-shrink: 0;
 }
 
 .scrim {
   display: none;
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal) - 1);
+  background: rgb(6 8 15 / 55%);
+  backdrop-filter: blur(2px);
 }
 
-/* ── tablet: the members panel becomes a drawer ─────────────────────────── */
+/* ── phone + tablet: the side panels are drawers over the conversation ───── */
 @media (max-width: 1199px) {
-  .members {
+  .members,
+  .thread {
     position: fixed;
     inset: 0 0 0 auto;
     z-index: var(--z-modal);
+    padding-bottom: env(safe-area-inset-bottom);
     transform: translateX(100%);
     transition: transform var(--duration-base) var(--ease-out);
     box-shadow: var(--shadow-lg);
   }
 
-  .members.open {
+  .members.open,
+  .thread.open {
     transform: translateX(0);
+  }
+
+  /* The thread mounts already open, so it slides in rather than transitions. */
+  .thread.open {
+    animation: slide-in-right var(--duration-base) var(--ease-out);
   }
 }
 
-/* ── phone: the sidebar becomes a drawer too ────────────────────────────── */
+/* ── phone: the sidebar is a drawer too, and every drawer is full-screen ─── */
 @media (max-width: 767px) {
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: var(--z-modal);
+    padding-bottom: env(safe-area-inset-bottom);
     transform: translateX(-100%);
     transition: transform var(--duration-base) var(--ease-out);
     box-shadow: var(--shadow-lg);
@@ -51,22 +74,28 @@
     transform: translateX(0);
   }
 
-  .scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: calc(var(--z-modal) - 1);
-    background: rgb(6 8 15 / 55%);
-    backdrop-filter: blur(2px);
+  .sidebar,
+  .members,
+  .thread {
+    width: 100%;
   }
 }
 
-@media (min-width: 768px) and (max-width: 1199px) {
-  .scrim {
+/* Each scrim class turns on exactly where its panel becomes an overlay. */
+@media (max-width: 1199px) {
+  .scrimSide {
     display: block;
-    position: fixed;
-    inset: 0;
-    z-index: calc(var(--z-modal) - 1);
-    background: rgb(6 8 15 / 55%);
+  }
+}
+
+@media (max-width: 767px) {
+  .scrimNav {
+    display: block;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
   }
 }

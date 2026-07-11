@@ -55,6 +55,17 @@ describe("Access token", () => {
     const stale = jwt.sign({ id: "u" }, process.env.JWT_SECRET, { expiresIn: "-1s" });
     expect(() => verifyAccessToken(stale)).toThrow(/expired/i);
   });
+
+  it("is signed with HS256", () => {
+    const { header } = jwt.decode(signAccessToken(USER), { complete: true });
+    expect(header.alg).toBe("HS256");
+  });
+
+  it("rejects an unsigned (alg:none) token — the algorithm is pinned", () => {
+    // A classic forgery: drop the signature and claim alg:none.
+    const unsigned = jwt.sign({ id: "u", username: "mallory" }, "", { algorithm: "none" });
+    expect(() => verifyAccessToken(unsigned)).toThrow();
+  });
 });
 
 describe("Refresh token", () => {

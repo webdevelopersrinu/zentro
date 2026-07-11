@@ -52,11 +52,19 @@ describe("RoomListItem — a room I'm in", () => {
     expect(screen.getByLabelText("Unread messages")).toBeInTheDocument();
   });
 
-  it("shows the pending-request count to the creator instead of the unread dot", () => {
-    renderItem({ room: room({ isCreator: true, requestCount: 2 }), unread: true });
+  it("shows the pending-request count to an admin instead of the unread dot", () => {
+    renderItem({ room: room({ isAdmin: true, requestCount: 2 }), unread: true });
 
     expect(screen.getByLabelText("2 pending requests")).toHaveTextContent("2");
     expect(screen.queryByLabelText("Unread messages")).not.toBeInTheDocument();
+  });
+
+  // Approving is an admin's job, so an ordinary member gets the dot, not the count.
+  it("shows an ordinary member the unread dot, never the request count", () => {
+    renderItem({ room: room({ isAdmin: false, requestCount: 2 }), unread: true });
+
+    expect(screen.getByLabelText("Unread messages")).toBeInTheDocument();
+    expect(screen.queryByLabelText("2 pending requests")).not.toBeInTheDocument();
   });
 });
 

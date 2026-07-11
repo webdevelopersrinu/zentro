@@ -1,4 +1,5 @@
 .iconButton {
+  position: relative;
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -35,6 +36,23 @@
 .lg {
   width: 44px;
   height: 44px;
+}
+
+/*
+ * WCAG 2.5.8: 44x44 minimum on touch. Expanding the hit area with a pseudo-element
+ * instead of the box keeps the compact look on desktop and stops the buttons from
+ * reflowing the rows they sit in.
+ */
+@media (pointer: coarse) {
+  .iconButton::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
 }
 
 .ghost {

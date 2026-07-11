@@ -19,7 +19,15 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* min-width:0 lets children (the editor) shrink instead of pushing the column wide. */
+  min-width: 0;
   max-width: min(70%, 560px);
+}
+
+@media (max-width: 767px) {
+  .stack {
+    max-width: 88%;
+  }
 }
 
 .rowMine .stack {
@@ -31,6 +39,22 @@
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-muted);
+}
+
+/* Actions sit before the bubble, so they never push my own text off the edge. */
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/*
+ * Reaches into MessageActions across the module boundary via the attribute:
+ * hashed class names cannot be referenced from another module's stylesheet.
+ */
+.line:hover [data-message-actions],
+.line:focus-within [data-message-actions] {
+  opacity: 1;
 }
 
 .bubble {
@@ -63,10 +87,40 @@
   color: var(--danger);
 }
 
+.thread {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.thread:hover {
+  background: var(--accent-subtle);
+}
+
+.deleted {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-faint);
+}
+
 .meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 0 var(--space-2);
   font-size: var(--text-xs);
   color: var(--text-faint);
+}
+
+.edited {
+  font-style: italic;
 }
 
 .retry {

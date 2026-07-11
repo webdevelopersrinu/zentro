@@ -14,6 +14,23 @@ describe("Security hardening", () => {
     user = await createUser({ username: "alice" });
   });
 
+  describe("Test-only login seam is not mounted by default", () => {
+    // The Jest app boots without E2E_TEST_LOGIN, exactly as production does.
+    // The OTP-leaking seam must simply not exist unless a test harness asks.
+    it("does not expose /api/test/last-code", async () => {
+      const res = await user.client.get("/api/test/last-code?email=alice@test.local");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBeUndefined();
+    });
+
+    it("does not expose the /api/test namespace at all", async () => {
+      const res = await user.client.get("/api/test/anything");
+
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe("Headers (helmet)", () => {
     it("sets hardening headers and hides the framework", async () => {
       const res = await user.client.get("/api/health");
